@@ -1,0 +1,61 @@
+import compression from "compression";
+import cookieParser from "cookie-parser";
+import cors from "cors";
+import express from "express";
+import mongoSanitize from "express-mongo-sanitize";
+import helmet from "helmet";
+import pinoHttp from "pino-http";
+import { env } from "./config/env.js";
+import { logger } from "./config/logger.js";
+import { errorHandler, notFoundHandler } from "./middleware/error.js";
+import { apiLimiter } from "./middleware/rate-limit.js";
+import { adminRouter } from "./routes/admin.routes.js";
+import { aiRouter } from "./routes/ai.routes.js";
+import { authRouter } from "./routes/auth.routes.js";
+import { collectionRouter } from "./routes/collection.routes.js";
+import { contractRouter } from "./routes/contract.routes.js";
+import { cryptoRouter } from "./routes/crypto.routes.js";
+import { dashboardRouter } from "./routes/dashboard.routes.js";
+import { earningsRouter } from "./routes/earnings.routes.js";
+import { generationRouter } from "./routes/generation.routes.js";
+import { ipfsRouter } from "./routes/ipfs.routes.js";
+import { launchpadRouter } from "./routes/launchpad.routes.js";
+import { networkRouter } from "./routes/network.routes.js";
+import { nftRouter } from "./routes/nft.routes.js";
+import { pricingRouter } from "./routes/pricing.routes.js";
+import { subscriptionRouter } from "./routes/subscription.routes.js";
+
+export function createApp() {
+  const app = express();
+  app.set("trust proxy", 1);
+  app.use((pinoHttp as unknown as (options: unknown) => express.RequestHandler)({ logger }));
+  app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+  app.use(cors({ origin: [env.APP_ORIGIN], credentials: true }));
+  app.use(compression());
+  app.use(express.json({ limit: "2mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "2mb" }));
+  app.use(cookieParser());
+  app.use(mongoSanitize());
+  app.use(apiLimiter);
+
+  app.get("/health", (_req, res) => res.json({ ok: true, service: "nexmint-api" }));
+  app.use("/api/auth", authRouter);
+  app.use("/api/ai", aiRouter);
+  app.use("/api/generate", generationRouter);
+  app.use("/api/collections", collectionRouter);
+  app.use("/api/ipfs", ipfsRouter);
+  app.use("/api/launchpad", launchpadRouter);
+  app.use("/api/network", networkRouter);
+  app.use("/api/nft", nftRouter);
+  app.use("/api/pricing", pricingRouter);
+  app.use("/api/contracts", contractRouter);
+  app.use("/api/crypto", cryptoRouter);
+  app.use("/api/dashboard", dashboardRouter);
+  app.use("/api/earnings", earningsRouter);
+  app.use("/api/subscription", subscriptionRouter);
+  app.use("/api/admin", adminRouter);
+
+  app.use(notFoundHandler);
+  app.use(errorHandler);
+  return app;
+}

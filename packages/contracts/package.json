@@ -1,0 +1,36 @@
+{
+  "name": "@nexmint/contracts",
+  "version": "1.0.0",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:base": "hardhat run scripts/deploy-treasury.ts --network base",
+    "deploy:polygon": "hardhat run scripts/deploy-treasury.ts --network polygon",
+    "deploy:base-sepolia": "hardhat run scripts/deploy.ts --network baseSepolia",
+    "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia",
+    "deploy:arbitrum-sepolia": "hardhat run scripts/deploy.ts --network arbitrumSepolia",
+    "deploy:bsc-testnet": "hardhat run scripts/deploy.ts --network bscTestnet",
+    "deploy-treasury:base-sepolia": "hardhat run scripts/deploy-treasury.ts --network baseSepolia",
+
+    "deploy-payment:base-sepolia": "hardhat run scripts/deploy-payment.ts --network baseSepolia",
+    "deploy-payment:sepolia": "hardhat run scripts/deploy-payment.ts --network sepolia",
+    "deploy-payment:arbitrum-sepolia": "hardhat run scripts/deploy-payment.ts --network arbitrumSepolia",
+    "deploy-payment:bsc-testnet": "hardhat run scripts/deploy-payment.ts --network bscTestnet",
+    "deploy-factory:base-sepolia": "hardhat run scripts/deploy-launchpad-factory.ts --network baseSepolia",
+    "deploy-factory:sepolia": "hardhat run scripts/deploy-launchpad-factory.ts --network sepolia",
+    "deploy-factory:arbitrum-sepolia": "hardhat run scripts/deploy-launchpad-factory.ts --network arbitrumSepolia",
+    "deploy-factory:bsc-testnet": "hardhat run scripts/deploy-launchpad-factory.ts --network bscTestnet",
+    "verify:contract:base-sepolia": "hardhat run scripts/verify.ts --network baseSepolia"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.2",
+    "erc721a": "^4.3.0"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "^3.0.8",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "dotenv": "^16.4.5",
+    "hardhat": "^2.22.12",
+    "typescript": "^5.6.2"
+  }
+}

@@ -1,0 +1,17 @@
+node_modules
+.npm-cache
+.next
+dist
+build
+coverage
+.env
+.env.*
+!.env.example
+uploads
+tmp
+cache
+artifacts
+typechain-types
+*.log
+*.tsbuildinfo
+docker-data

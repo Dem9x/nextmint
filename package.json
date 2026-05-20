@@ -1,0 +1,23 @@
+{
+  "name": "nexmint-ai",
+  "private": true,
+  "version": "1.0.0",
+  "description": "NEXMINT AI - AI-powered Web3 NFT generator and launchpad with crypto-native payments.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "contracts:compile": "npm --workspace @nexmint/contracts run compile",
+    "contracts:test": "npm --workspace @nexmint/contracts run test"
+  },
+  "engines": {
+    "node": ">=20.11.0",
+    "npm": ">=10.0.0"
+  }
+}

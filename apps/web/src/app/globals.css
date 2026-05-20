@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: #06070d;
+  color: #f8fafc;
+}
+
+.mesh {
+  background:
+    radial-gradient(circle at 20% 10%, rgba(34, 211, 238, 0.24), transparent 28%),
+    radial-gradient(circle at 80% 0%, rgba(163, 230, 53, 0.12), transparent 24%),
+    linear-gradient(180deg, #06070d 0%, #0b1020 48%, #06070d 100%);
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(220%); }
+}

@@ -1,0 +1,17 @@
+{
+  "chainId": 84532,
+  "network": "baseSepolia",
+  "nexmintCollection": "0xF42B4d69bF9F60CC68976B4ce74D114A3BFF5063",
+  "name": "NEXMINT Testnet Collection",
+  "symbol": "NXMT",
+  "maxSupply": "1000",
+  "deployer": "0x0d2F65EB0e3E4fe2E788321Fe8466bb289C02b84",
+  "txHash": "0x4e72739faff4aa04dd3c374300d8d51551a6b6cf209bfdfd8684e7e92d33f58f",
+  "deployedAt": "2026-05-20T17:35:07.910Z",
+  "nexmintCollectionFactory": "0xa7b36B6931FbD50C600d3d8daBf2A52da5009651",
+  "platformTreasury": "0x0d2F65EB0e3E4fe2E788321Fe8466bb289C02b84",
+  "platformFeeBps": "250",
+  "factoryDeployer": "0x0d2F65EB0e3E4fe2E788321Fe8466bb289C02b84",
+  "factoryTxHash": "0x0df6664896dd93ad083c17960b358ce1aede3e71d87f69c928509dec27b902c2",
+  "factoryDeployedAt": "2026-05-20T17:36:25.515Z"
+}
