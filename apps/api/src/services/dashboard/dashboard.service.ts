@@ -15,6 +15,7 @@ import { ReferralReward } from "../../models/ReferralReward.js";
 import { Subscription } from "../../models/Subscription.js";
 import { TreasuryBalance } from "../../models/TreasuryBalance.js";
 import { User } from "../../models/User.js";
+import { getGatewayUrl } from "../ipfs/ipfs.service.js";
 
 function objectId(id: string) {
   return new Types.ObjectId(id);
@@ -144,4 +145,20 @@ export async function earningsChart(userId: string, range: string) {
 export async function recentTransactions(userId?: string) {
   const match = userId ? { user: objectId(userId) } : {};
   return CryptoTransaction.find(match).sort({ createdAt: -1 }).limit(20).lean();
+}
+
+export async function userOwnedNfts(userId: string) {
+  const user = await User.findById(userId).lean();
+  const wallet = user?.primaryWallet ?? user?.primaryWalletAddress;
+  const ownerFilters: any[] = [{ userId: objectId(userId), mintStatus: "minted" }];
+  if (wallet) ownerFilters.push({ ownerWallet: wallet.toLowerCase(), mintStatus: "minted" });
+  const nfts = await NFTItem.find({ $or: ownerFilters })
+    .sort({ updatedAt: -1, createdAt: -1 })
+    .limit(24)
+    .lean();
+  return nfts.map((nft) => ({
+    ...nft,
+    imageGatewayUrl: nft.imageIpfsUri ? getGatewayUrl(nft.imageIpfsUri) : undefined,
+    metadataGatewayUrl: nft.metadataIpfsUri ? getGatewayUrl(nft.metadataIpfsUri) : nft.metadataGatewayUrl
+  }));
 }

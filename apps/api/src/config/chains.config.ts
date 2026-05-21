@@ -36,7 +36,9 @@ function address(value?: string) {
 }
 
 function privateKey(value?: string) {
-  return value?.startsWith("0x") ? (value as `0x${string}`) : undefined;
+  const normalized = value?.trim();
+  if (!normalized) return undefined;
+  return (normalized.startsWith("0x") ? normalized : `0x${normalized}`) as `0x${string}`;
 }
 
 export const CHAIN_REGISTRY: Record<number, ChainRegistryEntry> = {
@@ -52,7 +54,7 @@ export const CHAIN_REGISTRY: Record<number, ChainRegistryEntry> = {
     isTestnet: true,
     paymentContract: address(env.BASE_SEPOLIA_PAYMENT_CONTRACT),
     treasuryAddress: address(env.BASE_SEPOLIA_TREASURY_ADDRESS),
-    privateKey: privateKey(env.BASE_SEPOLIA_PRIVATE_KEY)
+    privateKey: privateKey(env.BASE_SEPOLIA_PRIVATE_KEY ?? env.DEPLOYER_PRIVATE_KEY)
   },
   11155111: {
     chainId: 11155111,

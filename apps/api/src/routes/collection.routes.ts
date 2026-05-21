@@ -188,6 +188,8 @@ collectionRouter.get("/:id/generation-status", requireAuth, asyncHandler(async (
     progressTotal: job?.progressTotal ?? collection.maxSupply,
     failedCount: job?.failedCount ?? 0,
     retryable: Boolean(job && ["failed", "paused"].includes(job.status)),
+    errorMessage: job?.errorMessage,
+    jobStatus: job?.status,
     metadataBaseIpfsUri: collection.metadataBaseIpfsUri ?? collection.metadataBaseUri,
     imageBaseIpfsUri: collection.imageBaseIpfsUri
   });

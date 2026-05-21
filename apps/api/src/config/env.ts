@@ -48,6 +48,7 @@ const schema = z.object({
   PINATA_NETWORK: z.enum(["public", "private"]).default("public"),
   PINATA_GATEWAY: optionalUrlWithDefault("https://gateway.pinata.cloud/ipfs"),
   PINATA_GATEWAY_URL: optionalUrlWithDefault("https://gateway.pinata.cloud/ipfs"),
+  PINATA_GATEWAY_TOKEN: z.string().optional(),
   NFT_STORAGE_TOKEN: z.string().optional(),
   NFT_STORAGE_API_KEY: z.string().optional(),
   NFT_STORAGE_GATEWAY_URL: optionalUrlWithDefault("https://nftstorage.link/ipfs"),

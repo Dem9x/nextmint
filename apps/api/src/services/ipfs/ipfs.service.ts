@@ -13,7 +13,8 @@ type IpfsUploadResult = {
 export function getGatewayUrl(ipfsUri: string) {
   const cid = ipfsUri.replace("ipfs://", "");
   const gateway = env.IPFS_PROVIDER === "nft_storage" ? env.NFT_STORAGE_GATEWAY_URL : env.PINATA_GATEWAY_URL || env.PINATA_GATEWAY;
-  return buildIpfsGatewayUrl(gateway, cid);
+  const gatewayToken = env.IPFS_PROVIDER === "nft_storage" ? undefined : env.PINATA_GATEWAY_TOKEN;
+  return buildIpfsGatewayUrl(gateway, cid, gatewayToken);
 }
 
 function isPinataConfigured() {
@@ -77,17 +78,30 @@ export async function uploadJson(metadata: unknown): Promise<IpfsUploadResult> {
 export async function uploadJsonDirectory(files: Array<{ path: string; json: unknown }>): Promise<IpfsUploadResult> {
   const buildForm = () => {
     const form = new FormData();
+    files.forEach((file, index) => {
+      const normalizedPath = file.path.replace(/^\/+/, "");
+      const uploadPath = normalizedPath.includes("/") ? normalizedPath : `metadata/${normalizedPath}`;
+      form.append("file", new Blob([JSON.stringify(file.json)], { type: "application/json" }), uploadPath);
+    });
+    return form;
+  };
+  const buildNftStorageForm = () => {
+    const form = new FormData();
     for (const file of files) {
-      form.append("file", new Blob([JSON.stringify(file.json)], { type: "application/json" }), file.path);
+      const normalizedPath = file.path.replace(/^\/+/, "");
+      form.append("file", new Blob([JSON.stringify(file.json)], { type: "application/json" }), normalizedPath);
     }
     return form;
   };
   const result = await withIpfsProviderFallback(async (provider) => {
     if (provider === "pinata") {
+      const form = buildForm();
+      form.append("pinataMetadata", JSON.stringify({ name: "nexmint-collection-metadata" }));
+      form.append("pinataOptions", JSON.stringify({ cidVersion: 1 }));
       const response = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
         method: "POST",
         headers: { Authorization: `Bearer ${env.PINATA_JWT}` },
-        body: buildForm()
+        body: form
       });
       if (!response.ok) {
         const body = await response.text().catch(() => "");
@@ -103,12 +117,12 @@ export async function uploadJsonDirectory(files: Array<{ path: string; json: unk
       const data = (await response.json()) as { IpfsHash: string };
       const cid = data.IpfsHash;
       const gateway = env.PINATA_GATEWAY_URL || env.PINATA_GATEWAY;
-      return { cid, uri: `ipfs://${cid}`, url: buildIpfsGatewayUrl(gateway, cid) };
+      return { cid, uri: `ipfs://${cid}`, url: buildIpfsGatewayUrl(gateway, cid, env.PINATA_GATEWAY_TOKEN) };
     }
-    const response = await fetch("https://api.nft.storage/upload", {
+      const response = await fetch("https://api.nft.storage/upload", {
       method: "POST",
       headers: { Authorization: `Bearer ${env.NFT_STORAGE_TOKEN || env.NFT_STORAGE_API_KEY}` },
-      body: buildForm()
+      body: buildNftStorageForm()
     });
     if (!response.ok) throw new AppError(response.status, `NFT.Storage directory upload failed: ${await response.text().catch(() => response.statusText)}`);
     const data = (await response.json()) as { ok: boolean; value?: { cid: string }; error?: { message?: string } };

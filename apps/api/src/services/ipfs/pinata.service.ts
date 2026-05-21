@@ -23,7 +23,7 @@ async function parsePinataResponse(response: Response) {
   }
   const data = (await response.json()) as { IpfsHash: string };
   const gateway = env.PINATA_GATEWAY_URL || env.PINATA_GATEWAY;
-  return { cid: data.IpfsHash, uri: `ipfs://${data.IpfsHash}`, url: buildIpfsGatewayUrl(gateway, data.IpfsHash) };
+  return { cid: data.IpfsHash, uri: `ipfs://${data.IpfsHash}`, url: buildIpfsGatewayUrl(gateway, data.IpfsHash, env.PINATA_GATEWAY_TOKEN) };
 }
 
 async function parsePinataV3Response(response: Response) {
@@ -41,7 +41,7 @@ async function parsePinataV3Response(response: Response) {
     throw new AppError(response.status || 502, `Pinata V3 upload failed: ${message}`);
   }
   const gateway = env.PINATA_GATEWAY_URL || env.PINATA_GATEWAY;
-  return { cid: body.data.cid, uri: `ipfs://${body.data.cid}`, url: buildIpfsGatewayUrl(gateway, body.data.cid) };
+  return { cid: body.data.cid, uri: `ipfs://${body.data.cid}`, url: buildIpfsGatewayUrl(gateway, body.data.cid, env.PINATA_GATEWAY_TOKEN) };
 }
 
 export async function uploadJsonToIpfs(name: string, json: unknown) {

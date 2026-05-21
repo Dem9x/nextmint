@@ -35,6 +35,8 @@ type GenerationStatus = {
   progressTotal: number;
   failedCount: number;
   retryable: boolean;
+  errorMessage?: string;
+  jobStatus?: string;
   metadataBaseIpfsUri?: string;
   imageBaseIpfsUri?: string;
 };
@@ -83,7 +85,7 @@ export default function CollectionStudioPage() {
   const activePlan = quote?.activePlan ?? user?.activePlan ?? user?.plan ?? "free";
   const maxSupplyAllowed = quote?.maxSupplyAllowed ?? user?.planLimits?.maxCollectionSize ?? 0;
   const progressPercent = status?.progressTotal ? Math.min((status.progressCurrent / status.progressTotal) * 100, 100) : 0;
-  const complete = status?.status === "ready_to_mint";
+  const complete = Boolean(status?.metadataBaseIpfsUri) || ["metadata_ready", "contract_deployed", "publish_fee_pending", "published", "minting_live", "sold_out"].includes(status?.status ?? "");
 
   async function refreshQuote(nextSupply = actualSupply) {
     try {
@@ -105,7 +107,7 @@ export default function CollectionStudioPage() {
       setStatus(next);
       const itemResult = await api<{ items: CollectionItem[] }>(`/api/collections/${collectionId}/items?limit=24`);
       setItems(itemResult.items);
-      if (["ready_to_mint", "failed", "cancelled"].includes(next.status)) {
+      if (["metadata_ready", "ready_to_mint", "failed", "cancelled"].includes(next.status)) {
   window.clearInterval(timer);
 }
     }, 5000);
@@ -279,6 +281,9 @@ async function generateCollection() {
                   <Info label="Failed" value={String(status?.failedCount ?? 0)} />
                   <Info label="Metadata" value={status?.metadataBaseIpfsUri ? "ready" : "pending"} />
                 </div>
+                {status?.errorMessage && (
+                  <p className="mt-4 rounded-md border border-rose/30 bg-rose/10 p-3 text-sm text-rose">{status.errorMessage}</p>
+                )}
                 {collectionId && (
                   <div className="mt-5 flex flex-wrap gap-3">
                     <Button className="border border-white/10 bg-transparent text-white" onClick={() => void control("pause-generation")}><Pause size={16} /> Pause</Button>

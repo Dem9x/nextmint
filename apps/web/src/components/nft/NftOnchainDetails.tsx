@@ -4,12 +4,19 @@ function short(value?: string) {
   return value && value.length > 14 ? `${value.slice(0, 6)}...${value.slice(-4)}` : value ?? "Unavailable";
 }
 
+function gatewayFromIpfs(ipfsUri: string | undefined, gateway: string) {
+  if (!ipfsUri?.startsWith("ipfs://")) return undefined;
+  return `${gateway.replace(/\/$/, "")}/${ipfsUri.replace("ipfs://", "").replace(/^\/+/, "")}`;
+}
+
 async function copy(value?: string) {
   if (!value || typeof navigator === "undefined") return;
   await navigator.clipboard.writeText(value);
 }
 
 export function NftOnchainDetails({ nft }: { nft: NftResultItem }) {
+  const publicMetadataGateway = gatewayFromIpfs(nft.metadataIpfsUri, "https://gateway.pinata.cloud/ipfs");
+  const publicImageGateway = gatewayFromIpfs(nft.imageIpfsUri, "https://gateway.pinata.cloud/ipfs");
   return (
     <div className="rounded-xl border border-white/10 bg-panel p-5">
       <h3 className="text-xl font-bold">On-chain Details</h3>
@@ -21,8 +28,14 @@ export function NftOnchainDetails({ nft }: { nft: NftResultItem }) {
         <Detail label="Transaction" value={short(nft.mintTxHash)} raw={nft.mintTxHash} />
         <Detail label="Metadata URI" value={nft.metadataIpfsUri ?? "Metadata unavailable"} raw={nft.metadataIpfsUri} />
         <Detail label="Metadata Gateway" value={short(nft.metadataGatewayUrl)} raw={nft.metadataGatewayUrl} href={nft.metadataGatewayUrl} />
+        {publicMetadataGateway && publicMetadataGateway !== nft.metadataGatewayUrl ? (
+          <Detail label="Public Metadata Gateway" value={short(publicMetadataGateway)} raw={publicMetadataGateway} href={publicMetadataGateway} />
+        ) : null}
         <Detail label="Image IPFS URI" value={nft.imageIpfsUri ?? "Image IPFS unavailable"} raw={nft.imageIpfsUri} />
         <Detail label="Image Gateway" value={short(nft.imageGatewayUrl)} raw={nft.imageGatewayUrl} href={nft.imageGatewayUrl} />
+        {publicImageGateway && publicImageGateway !== nft.imageGatewayUrl ? (
+          <Detail label="Public Image Gateway" value={short(publicImageGateway)} raw={publicImageGateway} href={publicImageGateway} />
+        ) : null}
       </div>
     </div>
   );

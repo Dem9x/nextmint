@@ -397,6 +397,8 @@ IPFS uploads support provider fallback:
 ```env
 IPFS_PROVIDER=auto
 PINATA_JWT=
+PINATA_GATEWAY_URL=https://gateway.pinata.cloud/ipfs
+PINATA_GATEWAY_TOKEN=
 NFT_STORAGE_TOKEN=
 NFT_STORAGE_GATEWAY_URL=https://nftstorage.link/ipfs
 ```
@@ -409,6 +411,7 @@ Pinata notes:
 - Collection metadata folder uploads still use legacy `pinFileToIPFS` because Pinata's V3 upload endpoint does not support folder uploads yet.
 - If your Pinata key is scoped only for legacy endpoints or only for V3 endpoints, create a new key with both upload scopes or set `IPFS_PROVIDER=auto` with `NFT_STORAGE_TOKEN` as fallback.
 - `pinataGatewayToken` from a gateway URL is read-only and cannot upload. `PINATA_JWT` must be the API JWT from Pinata API Keys with `org:files:write` for V3 uploads.
+- If a dedicated Pinata gateway shows `ERR_ID:00024`, configure the gateway read token with `PINATA_GATEWAY_TOKEN` or include `?pinataGatewayToken=...` in `PINATA_GATEWAY_URL`, then restart the API. On-chain metadata should stay as `ipfs://...`; the tokenized gateway URL is only for web previews.
 - Use `PINATA_UPLOAD_MODE=v3`, `legacy`, or `auto` to control upload behavior. `PINATA_NETWORK=public` is required for public NFT metadata.
 
 Treasury and credit economics:

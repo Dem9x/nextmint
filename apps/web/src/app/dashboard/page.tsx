@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Coins, Image, LineChart, Wallet } from "lucide-react";
+import { Coins, ExternalLink, Image, LineChart, Wallet } from "lucide-react";
 import { CryptoPaymentCard } from "@/components/crypto-payment-card";
 import { AuthGuard } from "@/components/auth/AuthGuard";
 import { SiteHeader } from "@/components/site-header";
@@ -26,10 +26,39 @@ type UserSummary = {
   pendingPayoutUsd: number;
 };
 
+type OwnedNft = {
+  _id: string;
+  name: string;
+  imageUrl?: string;
+  imageGatewayUrl?: string;
+  imageIpfsUri?: string;
+  tokenId?: string;
+  tokenNumber?: number;
+  chainId?: number;
+  contractAddress?: string;
+  mintStatus?: string;
+  rarityTier?: string;
+};
+
+function gatewayFromIpfs(ipfsUri: string | undefined, gateway: string) {
+  if (!ipfsUri?.startsWith("ipfs://")) return undefined;
+  return `${gateway.replace(/\/$/, "")}/${ipfsUri.replace("ipfs://", "").replace(/^\/+/, "")}`;
+}
+
+function dashboardNftImageCandidates(nft: OwnedNft) {
+  return [
+    nft.imageGatewayUrl,
+    gatewayFromIpfs(nft.imageIpfsUri, "https://gateway.pinata.cloud/ipfs"),
+    gatewayFromIpfs(nft.imageIpfsUri, "https://ipfs.io/ipfs"),
+    nft.imageUrl
+  ].filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index);
+}
+
 export default function DashboardPage() {
   const [summary, setSummary] = useState<UserSummary>();
   const [chart, setChart] = useState<Array<{ _id: string; usd: number }>>([]);
   const [transactions, setTransactions] = useState<Array<{ paymentId: string; token: string; usdValueAtPayment?: number; status: string }>>([]);
+  const [nfts, setNfts] = useState<OwnedNft[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>();
 
@@ -37,12 +66,14 @@ export default function DashboardPage() {
     withMinimumDelay(Promise.all([
       api<UserSummary>("/api/dashboard/user/summary"),
       api<{ data: Array<{ _id: string; usd: number }> }>("/api/dashboard/earnings-chart?range=30d"),
-      api<{ transactions: typeof transactions }>("/api/dashboard/transactions/recent")
+      api<{ transactions: typeof transactions }>("/api/dashboard/transactions/recent"),
+      api<{ nfts: OwnedNft[] }>("/api/dashboard/user/nfts")
     ]))
-      .then(([nextSummary, nextChart, nextTransactions]) => {
+      .then(([nextSummary, nextChart, nextTransactions, nextNfts]) => {
         setSummary(nextSummary);
         setChart(nextChart.data);
         setTransactions(nextTransactions.transactions);
+        setNfts(nextNfts.nfts);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load dashboard"))
       .finally(() => setIsLoading(false));
@@ -65,6 +96,39 @@ export default function DashboardPage() {
           <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_420px]">
             <div className="space-y-6">
               <EarningsChart data={chart} />
+              <section className="rounded-xl border border-white/10 bg-panel p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold uppercase text-cyan">Owned NFTs</p>
+                    <h2 className="mt-1 text-2xl font-black">Your On-chain Collection</h2>
+                  </div>
+                  <a className="inline-flex items-center gap-2 rounded-md border border-cyan/30 px-3 py-2 text-sm text-cyan hover:bg-cyan/10" href="/launchpad">
+                    Explore Launchpad <ExternalLink size={14} />
+                  </a>
+                </div>
+                {isLoading ? (
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {Array.from({ length: 4 }).map((_, index) => <div key={index} className="aspect-[3/4] animate-pulse rounded-lg bg-white/5" />)}
+                  </div>
+                ) : !nfts.length ? (
+                  <div className="mt-5 rounded-lg border border-white/10 bg-white/[0.03] p-8 text-center text-muted">No NFTs owned yet.</div>
+                ) : (
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {nfts.map((nft) => (
+                      <a key={nft._id} href={`/nft/${nft._id}`} className="overflow-hidden rounded-lg border border-white/10 bg-white/[0.03] transition hover:border-cyan/40">
+                        <DashboardNftImage nft={nft} />
+                        <div className="p-3">
+                          <p className="truncate font-bold">{nft.name}</p>
+                          <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted">
+                            <span>Token #{nft.tokenId ?? nft.tokenNumber ?? "?"}</span>
+                            <span className="rounded-full border border-cyan/20 px-2 py-0.5 text-cyan">{nft.rarityTier ?? nft.mintStatus ?? "minted"}</span>
+                          </div>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </section>
               <RecentTransactionsTable transactions={transactions} />
             </div>
             <div className="space-y-6">
@@ -77,5 +141,26 @@ export default function DashboardPage() {
       </NoMockDataGuard>
       </AuthGuard>
     </main>
+  );
+}
+
+function DashboardNftImage({ nft }: { nft: OwnedNft }) {
+  const candidates = dashboardNftImageCandidates(nft);
+  const [imageIndex, setImageIndex] = useState(0);
+  const imageSrc = candidates[imageIndex];
+
+  return (
+    <div className="aspect-square bg-black/40">
+      {imageSrc ? (
+        <img
+          src={imageSrc}
+          alt={nft.name}
+          className="h-full w-full object-cover"
+          onError={() => setImageIndex((current) => current + 1)}
+        />
+      ) : (
+        <div className="flex h-full items-center justify-center text-xs text-muted">No image</div>
+      )}
+    </div>
   );
 }

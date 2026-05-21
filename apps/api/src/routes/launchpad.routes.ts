@@ -4,6 +4,7 @@ import { z } from "zod";
 import { NFTCollection } from "../models/NFTCollection.js";
 import { MintCampaign } from "../models/MintCampaign.js";
 import { MintRecord } from "../models/MintRecord.js";
+import { NFTItem } from "../models/NFTItem.js";
 import { User } from "../models/User.js";
 import { AppError } from "../middleware/error.js";
 import { type AuthRequest, requireAuth } from "../middleware/auth.js";
@@ -55,8 +56,34 @@ launchpadRouter.get("/collections/:slug", asyncHandler(async (req, res) => {
   if (!["published", "minting_live", "sold_out"].includes(collection.status) || collection.publishFeeStatus !== "verified") {
     throw new AppError(404, "Published collection not found");
   }
-  const campaign = await MintCampaign.findOne({ collectionId: collection._id }).lean();
-  res.json({ collection: { ...collection, liveStatus: currentPublicStatus(collection) }, campaign });
+  const [campaign, items, recentMints, traitSummary] = await Promise.all([
+    MintCampaign.findOne({ collectionId: collection._id }).lean(),
+    NFTItem.find({ collectionId: collection._id })
+      .select("tokenNumber name imageUrl imageIpfsUri metadataIpfsUri rarityTier rarityScore rarityRank generationStatus mintStatus minted ownerWallet tokenId")
+      .sort({ tokenNumber: 1 })
+      .limit(48)
+      .lean(),
+    MintRecord.find({ collectionId: collection._id, status: "confirmed" })
+      .select("minterWallet tokenIds quantity grossAmountToken token txHash createdAt")
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .lean(),
+    NFTItem.aggregate([
+      { $match: { collectionId: collection._id } },
+      { $unwind: "$traits" },
+      { $group: { _id: { traitType: "$traits.trait_type", value: "$traits.value" }, count: { $sum: 1 } } },
+      { $sort: { "_id.traitType": 1, count: -1 } },
+      { $limit: 80 },
+      { $project: { _id: 0, traitType: "$_id.traitType", value: "$_id.value", count: 1 } }
+    ])
+  ]);
+  res.json({
+    collection: { ...collection, liveStatus: currentPublicStatus(collection) },
+    campaign,
+    items,
+    recentMints,
+    traitSummary
+  });
 }));
 
 launchpadRouter.post("/collections/:id/verify-mint", requireAuth, asyncHandler(async (req: AuthRequest, res) => {
@@ -148,6 +175,18 @@ launchpadRouter.post("/collections/:id/verify-mint", requireAuth, asyncHandler(a
   );
 
   const totalMinted = Math.min((collection.totalMinted ?? collection.mintedSupply ?? 0) + quantity, collection.maxSupply);
+  await Promise.all(transferTokenIds.map((tokenId) => NFTItem.findOneAndUpdate(
+    { collectionId: collection._id, tokenNumber: Number(tokenId) },
+    {
+      minted: true,
+      mintStatus: "minted",
+      tokenId,
+      mintTxHash: body.txHash.toLowerCase(),
+      ownerWallet: body.minterWallet.toLowerCase(),
+      chainId: body.chainId,
+      contractAddress: collection.contractAddress!.toLowerCase()
+    }
+  )));
   collection.totalMinted = totalMinted;
   collection.mintedSupply = totalMinted;
   collection.status = totalMinted >= collection.maxSupply ? "sold_out" : currentPublicStatus(collection);

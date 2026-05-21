@@ -240,7 +240,22 @@ export async function processCollectionGeneration(collectionId: string, jobId: s
   await updateJob(jobId, { stage: "upload_metadata_ipfs", progressCurrent: job.supply });
   collection.status = "uploading_metadata";
   await collection.save();
-  const metadataUpload = await uploadJsonDirectory(metadataFiles);
+  let metadataUpload: Awaited<ReturnType<typeof uploadJsonDirectory>>;
+  try {
+    metadataUpload = await uploadJsonDirectory(metadataFiles);
+  } catch (error) {
+    const errorMessage = messageOf(error);
+    collection.status = "failed";
+    await collection.save();
+    await updateJob(jobId, {
+      status: "failed",
+      stage: "upload_metadata_ipfs",
+      progressCurrent: job.supply,
+      failedCount,
+      errorMessage
+    });
+    return;
+  }
   const metadataBaseUri = metadataUpload.ipfsUri.endsWith("/") ? metadataUpload.ipfsUri : `${metadataUpload.ipfsUri}/`;
 
   await NFTItem.updateMany(

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { AuthRequest } from "../middleware/auth.js";
-import { adminSummary, aiUsageChart, creatorSummary, earningsChart, mintChart, recentTransactions, revenueChart, userSummary } from "../services/dashboard/dashboard.service.js";
+import { adminSummary, aiUsageChart, creatorSummary, earningsChart, mintChart, recentTransactions, revenueChart, userOwnedNfts, userSummary } from "../services/dashboard/dashboard.service.js";
 import { asyncHandler } from "../utils/async-handler.js";
 
 const chartQuery = z.object({
@@ -42,4 +42,8 @@ export const getEarningsChart = asyncHandler(async (req: AuthRequest, res) => {
 
 export const getRecentTransactions = asyncHandler(async (req: AuthRequest, res) => {
   res.json({ transactions: await recentTransactions(req.user!.id) });
+});
+
+export const getUserNfts = asyncHandler(async (req: AuthRequest, res) => {
+  res.json({ nfts: await userOwnedNfts(req.user!.id) });
 });

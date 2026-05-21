@@ -1,13 +1,40 @@
+"use client";
+
+import { useState } from "react";
 import type { NftResultItem } from "@/lib/api/nft";
 import { ChainBadge } from "@/components/web3/ChainBadge";
 
+function gatewayFromIpfs(ipfsUri: string | undefined, gateway: string) {
+  if (!ipfsUri?.startsWith("ipfs://")) return undefined;
+  return `${gateway.replace(/\/$/, "")}/${ipfsUri.replace("ipfs://", "").replace(/^\/+/, "")}`;
+}
+
 export function NftResultCard({ nft }: { nft: NftResultItem }) {
-  const imageSrc = nft.imageGatewayUrl ?? nft.imageUrl;
+  const imageCandidates = [
+    nft.imageGatewayUrl,
+    nft.imageUrl,
+    gatewayFromIpfs(nft.imageIpfsUri, "https://gateway.pinata.cloud/ipfs"),
+    gatewayFromIpfs(nft.imageIpfsUri, "https://ipfs.io/ipfs")
+  ].filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index);
+  const [imageIndex, setImageIndex] = useState(0);
+  const imageSrc = imageCandidates[imageIndex];
   return (
     <div className="overflow-hidden rounded-xl border border-white/10 bg-panel">
       <div className={`p-1 ${nft.mintStatus === "minted" ? "bg-[linear-gradient(135deg,rgba(132,204,22,.8),rgba(34,211,238,.8),rgba(236,72,153,.6))]" : "bg-white/10"}`}>
         <div className="aspect-square overflow-hidden rounded-lg bg-black/70">
-          {imageSrc ? <img src={imageSrc} alt={nft.name} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-muted">Image unavailable</div>}
+          {imageSrc ? (
+            <img
+              src={imageSrc}
+              alt={nft.name}
+              className="h-full w-full object-cover"
+              onError={() => setImageIndex((current) => current + 1)}
+            />
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-muted">
+              <span>Image unavailable from current gateway.</span>
+              {nft.imageIpfsUri ? <span className="break-all text-xs text-cyan">{nft.imageIpfsUri}</span> : null}
+            </div>
+          )}
         </div>
       </div>
       <div className="space-y-4 p-5">
