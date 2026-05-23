@@ -1,6 +1,140 @@
 # NEXMINT AI
 
+![CI](https://github.com/Dem9x/nextmint/actions/workflows/ci.yml/badge.svg)
+
 NEXMINT AI is a production-oriented SaaS starter for an AI-powered Web3 NFT generator and launchpad. It includes a Next.js 15 frontend, Express API, MongoDB models, BullMQ workers, modular AI providers, IPFS uploads, ERC721A launch contracts, and a crypto-only payment system.
+
+## Screenshots
+
+Replace these placeholders with real screenshots before submitting grant applications.
+
+![Studio Single NFT](docs/assets/screenshots/studio-single-nft.png)
+![Collection Generator](docs/assets/screenshots/collection-generator.png)
+![Generated Items](docs/assets/screenshots/generated-items.png)
+![Creator Manage Page](docs/assets/screenshots/creator-manage.png)
+![Launchpad Mint Page](docs/assets/screenshots/launchpad-mint.png)
+
+## Demo Flow
+
+1. Connect wallet.
+2. Generate a single NFT.
+3. Upload image and metadata to IPFS.
+4. Mint using the default NEXMINT single NFT contract.
+5. Generate a collection.
+6. Upload collection images and metadata to IPFS.
+7. Validate metadata `baseURI`.
+8. Deploy ERC721A collection.
+9. Publish launchpad.
+10. Public users mint.
+
+## Account Wallet Linking
+
+Email users can link a wallet from the dashboard. NEXMINT asks the connected wallet to sign a short-lived message, then the backend verifies that signature before saving the wallet to the user account. This is gasless and does not authorize spending.
+
+Linked wallets are used for minting, marketplace actions, likes, creator collection management, and creator payout defaults. See [Account Wallet Linking](docs/account-wallet-linking.md).
+
+## Current Status
+
+- Single NFT generation: prototype / testnet-ready
+- Collection generation: prototype / in progress
+- IPFS metadata flow: in progress
+- ERC721A contracts: testnet-ready
+- Launchpad minting: testnet prototype
+- Marketplace: fixed-price testnet prototype with basic analytics
+- Mainnet production: not yet audited
+
+## Pricing and Fair Use
+
+NEXMINT uses a credit-based pricing model to prevent unlimited AI generation and protect operational costs.
+
+- Free / Testnet: 5 credits/month, 512px only, collection tests up to 5 NFTs
+- Starter: $9/month, 120 credits/month, 768px, collections up to 50 NFTs
+- Creator: $29/month, 600 credits/month, collections up to 300 NFTs, 1 launchpad publish/month
+- Pro: $99/month, 2500 credits/month, 1024px, collections up to 1000 NFTs, 5 launchpad publishes/month
+
+Credit costs are enforced server-side. Frontend plan displays are informational only. See [Pricing and Credits](docs/pricing.md) and [Fair Use Policy](docs/FAIR_USE_POLICY.md).
+
+## Marketplace Roadmap
+
+NEXMINT marketplace support is planned as a staged rollout after minting.
+
+- **Phase 1:** External marketplace and explorer links after mint. Users can view minted NFTs on explorers and supported external marketplaces while indexing catches up.
+- **Phase 2:** Internal fixed-price marketplace for NFTs minted through the default single NFT contract and launchpad ERC721A collections, including collection profile management, likes, trending discovery, collection pages, asset detail pages, floor price, total volume, trade history, top collections, recent activity, blockchain details, price panels, and fixed-price Buy Now.
+- **Phase 3:** Offers after the fixed-price flow is reviewed and tested.
+- **Phase 4:** Auctions.
+- **Phase 5:** Analytics, floor price, and richer activity feeds.
+
+Backend trade status must come from verified receipts and marketplace events; the backend must not custody user NFTs or mark trades successful from frontend-only state.
+
+See [Marketplace Roadmap](docs/MARKETPLACE_ROADMAP.md), [Marketplace Architecture](docs/MARKETPLACE_ARCHITECTURE.md), and [Marketplace V1](docs/MARKETPLACE_V1.md).
+
+## Creator Badges
+
+NEXMINT supports trust and discovery badges across marketplace, launchpad, and creator management screens:
+
+- Blue checkmark: verified creator or verified collection, assigned by NEXMINT/admin review.
+- Pink `PRO` badge: creator has an active Pro or Enterprise plan.
+
+Badges are derived from backend user and collection records, not frontend-only state. They may also contribute a small discovery/trending signal later.
+
+## Grant Proposal Links
+
+- [One-page grant proposal](docs/grant-proposal-one-page.md)
+- [Short grant proposal](docs/grant-proposal-short.md)
+- [Reusable grant application answers](docs/grant-application-answers.md)
+
+## License & Commercial Use
+
+This repository is source-available for transparency, grant review, and educational purposes.
+
+Commercial use, resale, hosted SaaS deployment, or launching a competing product based on this code requires written permission from the maintainer.
+
+For commercial licensing or partnership inquiries, contact:
+[ADD CONTACT EMAIL]
+
+See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
+
+## Open-Core Roadmap
+
+NEXMINT AI uses an open-core strategy.
+
+Public repository may include:
+
+- README and documentation
+- frontend UI prototype
+- smart contract templates
+- demo architecture
+- `.env.example` without secrets
+- grant proposal documents
+- basic API skeleton
+- testnet/demo flows
+
+Private production modules may include:
+
+- AI provider routing logic
+- payment verification production logic
+- deployer/private-key flow
+- admin dashboard
+- revenue/treasury production logic
+- premium plan and credit system
+- anti-abuse and rate-limit logic
+- provider fallback strategy
+- production IPFS/Filebase implementation
+- billing and subscription logic
+- monitoring and operational tooling
+
+This lets reviewers understand the project while protecting production business logic. See [Open-Core Split Plan](docs/OPEN_CORE_SPLIT_PLAN.md) and [Private Production Modules](docs/PRIVATE_MODULES.md).
+
+## Public vs Private Architecture
+
+The intended repository split is:
+
+- **Public:** `https://github.com/Dem9x/nextmint`
+- **Private:** `https://github.com/Dem9x/nextmint-platform`
+
+The public repo should stay useful for grants, demos, education, and technical review. The private repo should contain production-specific modules, operational safeguards, commercial SaaS logic, deployment controls, and secrets-managed infrastructure.
+
+Do not commit real secrets to either repository. Keep `.env.example` public, but keep `.env`, deployer keys, provider API keys, database URLs, RPC tokens, and production credentials private.
 
 ## Architecture
 
@@ -386,16 +520,41 @@ curl -X POST "$API_ORIGIN/api/nft/verify-mint" \
   -d '{"nftItemId":"...","chainId":84532,"contractAddress":"0x...","txHash":"0x..."}'
 ```
 
-`verify-mint` only returns `minted` after it finds a confirmed ERC721 `Transfer` event to the logged-in wallet. No fake token IDs, tx hashes, or IPFS CIDs are generated.
+`verify-mint` only returns `minted` after it finds a confirmed ERC721 `Transfer` event to the recipient wallet. No fake token IDs, tx hashes, or IPFS CIDs are generated.
 
-The Studio mint button calls `mintTo(address,string)` on the selected collection contract, so collections deployed before this function was added must be redeployed before single AI NFTs can be minted.
+Single NFT Studio minting uses a direct metadata token URI such as `ipfs://IMAGE_METADATA_CID`. This is different from launchpad collections, which use a folder base URI such as `ipfs://METADATA_FOLDER_CID/` and `tokenURI(1) = ipfs://METADATA_FOLDER_CID/1.json`.
+
+The active Studio mint modes are:
+
+- `Mint with NEXMINT default contract`: wallet-native mint through the preconfigured single NFT minter for the selected chain.
+- `Export metadata only`: copy/download image and metadata IPFS URIs for external minting.
+
+Custom contract minting and deploying a new single NFT contract from Studio are visible as Coming Soon. In default mode, the frontend does not show a manual contract input and the backend does not trust a frontend contract address. The default minter is resolved from env/server config.
+
+```env
+NEXT_PUBLIC_SINGLE_NFT_MINTER_BASE_SEPOLIA=
+NEXT_PUBLIC_SINGLE_NFT_MINTER_BASE_MAINNET=
+NEXT_PUBLIC_SINGLE_NFT_MINTER_SEPOLIA=
+NEXT_PUBLIC_SINGLE_NFT_MINTER_POLYGON_AMOY=
+
+SINGLE_NFT_MINTER_BASE_SEPOLIA=
+SINGLE_NFT_MINTER_BASE_MAINNET=
+SINGLE_NFT_MINTER_SEPOLIA=
+SINGLE_NFT_MINTER_POLYGON_AMOY=
+```
 
 After a successful single NFT mint, Studio links to `/nft/:nftItemId`. The result page fetches real data from `GET /api/nft/items/:id` and shows the NFT image, attributes, IPFS URIs, chain, contract, token id, owner wallet, tx hash, and explorer links. Minted NFTs are publicly readable; unminted prepared NFTs require the owner session and are never shown as successful mints.
 
-IPFS uploads support provider fallback:
+IPFS uploads use Filebase by default for generated images, so temporary Replicate/HuggingFace/Flux URLs are copied to durable IPFS before the frontend sees them:
 
 ```env
-IPFS_PROVIDER=auto
+IPFS_PROVIDER=filebase
+FILEBASE_ACCESS_KEY=
+FILEBASE_SECRET_KEY=
+FILEBASE_BUCKET=
+FILEBASE_S3_ENDPOINT=https://s3.filebase.com
+FILEBASE_GATEWAY=https://ipfs.filebase.io/ipfs
+
 PINATA_JWT=
 PINATA_GATEWAY_URL=https://gateway.pinata.cloud/ipfs
 PINATA_GATEWAY_TOKEN=
@@ -403,7 +562,11 @@ NFT_STORAGE_TOKEN=
 NFT_STORAGE_GATEWAY_URL=https://nftstorage.link/ipfs
 ```
 
-Use `IPFS_PROVIDER=nft_storage` to force NFT.Storage. Use `IPFS_PROVIDER=auto` to try Pinata first when configured and automatically fall back to NFT.Storage if Pinata fails. NFT.Storage API keys stay backend-only. NFT.Storage Classic upload availability has changed over time, so if a new token cannot upload, use the current Web3.Storage/Storacha free-tier path and keep the backend provider boundary the same.
+Create a Filebase IPFS bucket, then add the access key, secret key, and bucket name to the backend env. `generation.imageUrl` and `NFTItem.imageUrl` are stored as Filebase/IPFS gateway URLs; metadata JSON still uses `ipfs://IMAGE_CID`.
+
+Collection metadata folder uploads require a real directory CID so `tokenURI(1)` resolves to `ipfs://METADATA_CID/1.json`. Until Filebase RPC directory upload is implemented, the app keeps Pinata legacy folder upload as the metadata directory fallback when `IPFS_PROVIDER=filebase`. Do not fake a Filebase baseURI from unrelated single-file CIDs.
+
+Use `IPFS_PROVIDER=nft_storage` to force NFT.Storage. Use `IPFS_PROVIDER=auto` to use Filebase for images when configured and fall back to the older providers. NFT.Storage API keys stay backend-only. NFT.Storage Classic upload availability has changed over time, so if a new token cannot upload, use the current Web3.Storage/Storacha free-tier path and keep the backend provider boundary the same.
 
 Pinata notes:
 

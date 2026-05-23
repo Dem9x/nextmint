@@ -14,9 +14,9 @@ export const requireAuth: RequestHandler = async (req: AuthRequest, _res, next) 
   if (!token) return next(new AppError(401, "Authentication required"));
   try {
     const payload = jwt.verify(token, env.JWT_SECRET) as { sub: string; role: "user" | "creator" | "admin" };
-    const user = await User.findById(payload.sub).select("_id role primaryWallet primaryWalletAddress isBanned").lean();
+    const user = await User.findById(payload.sub).select("_id role walletAddress primaryWallet primaryWalletAddress isBanned").lean();
     if (!user || user.isBanned) throw new AppError(401, "Invalid account");
-    req.user = { id: String(user._id), role: user.role, walletAddress: user.primaryWallet ?? user.primaryWalletAddress ?? undefined };
+    req.user = { id: String(user._id), role: user.role, walletAddress: user.walletAddress ?? user.primaryWallet ?? user.primaryWalletAddress ?? undefined };
     next();
   } catch (error) {
     next(error instanceof AppError ? error : new AppError(401, "Invalid token"));
@@ -29,9 +29,9 @@ export const optionalAuth: RequestHandler = async (req: AuthRequest, _res, next)
   if (!token) return next();
   try {
     const payload = jwt.verify(token, env.JWT_SECRET) as { sub: string; role: "user" | "creator" | "admin" };
-    const user = await User.findById(payload.sub).select("_id role primaryWallet primaryWalletAddress isBanned").lean();
+    const user = await User.findById(payload.sub).select("_id role walletAddress primaryWallet primaryWalletAddress isBanned").lean();
     if (user && !user.isBanned) {
-      req.user = { id: String(user._id), role: user.role, walletAddress: user.primaryWallet ?? user.primaryWalletAddress ?? undefined };
+      req.user = { id: String(user._id), role: user.role, walletAddress: user.walletAddress ?? user.primaryWallet ?? user.primaryWalletAddress ?? undefined };
     }
   } catch {
     // Public reads should not fail because an optional token is stale.

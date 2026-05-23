@@ -4,17 +4,23 @@ import { AppError } from "../../middleware/error.js";
 import { imageGenerationQueue } from "../../queues/image-generation.queue.js";
 import { promptEnhancementQueue } from "../../queues/prompt-enhancement.queue.js";
 import { CreditLedger } from "../../models/CreditLedger.js";
-import { priceAIUsage } from "../../services/credits/pricing.service.js";
+import { getImageCreditCost, getPromptEnhancementCreditCost, normalizeImageSize } from "../../services/billing/credit-cost.service.js";
+import { getActiveUserPlan } from "../../services/subscription.service.js";
 import type { ImageGenerationInput } from "../types/ai.types.js";
 
 export async function createQueuedImageGeneration(input: ImageGenerationInput & { prompt: string; userId: string }) {
-  const creditPrice = priceAIUsage(input.model ?? input.provider ?? "replicate");
   const user = await User.findById(input.userId);
   if (!user) throw new AppError(404, "User not found");
-  if ((user.credits ?? 0) < creditPrice.credits) {
-    throw new AppError(402, "INSUFFICIENT_CREDITS", { message: "You need more credits to generate this NFT." });
+  const activePlan = await getActiveUserPlan(input.userId);
+  const imageSize = normalizeImageSize(input.width, input.height);
+  const creditCost = getImageCreditCost(imageSize) + getPromptEnhancementCreditCost();
+  if (imageSize > Number(activePlan.limits.maxImageSize ?? 512)) {
+    throw new AppError(402, "PLAN_IMAGE_SIZE_EXCEEDED", { message: `Your plan supports image size up to ${activePlan.limits.maxImageSize}px.` });
   }
-  user.credits -= creditPrice.credits;
+  if ((user.credits ?? 0) < creditCost) {
+    throw new AppError(402, "INSUFFICIENT_CREDITS", { message: `Insufficient credits. Required: ${creditCost}, available: ${user.credits ?? 0}.` });
+  }
+  user.credits -= creditCost;
   await user.save();
   const generation = await Generation.create({
     user: input.userId,
@@ -27,15 +33,15 @@ export async function createQueuedImageGeneration(input: ImageGenerationInput & 
     status: "pending",
     seed: input.seed,
     progress: 0,
-    output: { width: input.width, height: input.height, referenceImageUrl: input.referenceImageUrl, style: input.style }
+    output: { width: imageSize, height: imageSize, referenceImageUrl: input.referenceImageUrl, style: input.style, estimatedCredits: creditCost }
   });
   await CreditLedger.create({
     userId: input.userId,
     type: "generation_spend",
-    amount: -creditPrice.credits,
+    amount: -creditCost,
     balanceAfter: user.credits,
     sourceId: generation._id,
-    metadata: { model: input.model, provider: input.provider }
+    metadata: { model: input.model, provider: input.provider, imageSize, promptEnhancementCredits: getPromptEnhancementCreditCost() }
   });
   await promptEnhancementQueue.add("enhance-prompt", { generationId: String(generation._id) });
   return generation;

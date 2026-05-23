@@ -5,6 +5,7 @@ import { CollectionGenerationJob } from "../../models/CollectionGenerationJob.js
 import { aiRouterService } from "../../ai/services/ai-router.service.js";
 import { uploadImageFromUrl, uploadJsonDirectory } from "../ipfs/ipfs.service.js";
 import { defaultNegativePrompt, buildTokenPrompt, rollUniqueTraits } from "./trait-engine.service.js";
+import { assertCollectionMetadataReady, normalizeMetadataBaseUri } from "./collection-readiness.service.js";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -33,9 +34,9 @@ function imageDelayMs() {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 8000;
 }
 
-function collectionImageDimensions() {
-  const imageWidth = Number(process.env.COLLECTION_IMAGE_WIDTH ?? 768);
-  const imageHeight = Number(process.env.COLLECTION_IMAGE_HEIGHT ?? 768);
+function collectionImageDimensions(collection?: { generationImageWidth?: number | null; generationImageHeight?: number | null }) {
+  const imageWidth = Number(collection?.generationImageWidth ?? process.env.COLLECTION_IMAGE_WIDTH ?? 768);
+  const imageHeight = Number(collection?.generationImageHeight ?? process.env.COLLECTION_IMAGE_HEIGHT ?? 768);
   const safeImageWidth = Number.isFinite(imageWidth) && imageWidth > 0 ? imageWidth : 768;
   const safeImageHeight = Number.isFinite(imageHeight) && imageHeight > 0 ? imageHeight : 768;
   return { width: safeImageWidth, height: safeImageHeight };
@@ -78,7 +79,7 @@ export async function processCollectionGeneration(collectionId: string, jobId: s
   const usedHashes = new Set(existingHashes.map((item) => item.traitHash).filter(Boolean) as string[]);
   let failedCount = 0;
   const metadataFiles: Array<{ path: string; json: unknown }> = [];
-  const imageDimensions = collectionImageDimensions();
+  const imageDimensions = collectionImageDimensions(collection);
 
   await updateJob(jobId, { stage: "create_traits", progressCurrent: 0 });
   collection.status = "generating_traits";
@@ -162,6 +163,10 @@ export async function processCollectionGeneration(collectionId: string, jobId: s
         });
         if (!image.success || !image.data?.imageUrl) throw new Error(image.error?.message ?? "Image generation failed");
         item.imageUrl = image.data.imageUrl;
+        item.metadata = {
+          ...(typeof item.metadata === "object" && item.metadata ? item.metadata : {}),
+          originalProviderImageUrl: image.data.imageUrl
+        };
         item.generationProvider = image.provider;
         item.generationStatus = "image_generated";
         await item.save();
@@ -171,9 +176,10 @@ export async function processCollectionGeneration(collectionId: string, jobId: s
       collection.status = "uploading_images";
       await collection.save();
       const imageUpload = item.imageIpfsUri
-        ? { ipfsUri: item.imageIpfsUri, ipfsHash: item.imageIpfsUri.replace("ipfs://", ""), gatewayUrl: item.metadataGatewayUrl ?? item.imageUrl }
-        : await uploadImageFromUrl(item.imageUrl);
+        ? { ipfsUri: item.imageIpfsUri, ipfsHash: item.imageIpfsUri.replace("ipfs://", ""), gatewayUrl: item.imageUrl }
+        : await uploadImageFromUrl(item.imageUrl, { key: `collections/${String(collection._id)}/images/${tokenNumber}` });
       item.imageIpfsUri = imageUpload.ipfsUri;
+      item.imageUrl = imageUpload.gatewayUrl;
       item.generationStatus = "image_uploaded";
       await item.save();
 
@@ -256,7 +262,14 @@ export async function processCollectionGeneration(collectionId: string, jobId: s
     });
     return;
   }
-  const metadataBaseUri = metadataUpload.ipfsUri.endsWith("/") ? metadataUpload.ipfsUri : `${metadataUpload.ipfsUri}/`;
+  const metadataBaseUri = normalizeMetadataBaseUri(metadataUpload.ipfsUri);
+  if (!metadataBaseUri?.startsWith("ipfs://")) {
+    const errorMessage = "Metadata folder upload did not return a valid ipfs:// base URI";
+    collection.status = "failed";
+    await collection.save();
+    await updateJob(jobId, { status: "failed", stage: "upload_metadata_ipfs", progressCurrent: job.supply, failedCount, errorMessage });
+    return;
+  }
 
   await NFTItem.updateMany(
     { collectionId: new Types.ObjectId(collectionId) },
@@ -266,6 +279,20 @@ export async function processCollectionGeneration(collectionId: string, jobId: s
   collection.metadataBaseUri = metadataBaseUri;
   collection.metadataBaseIpfsUri = metadataBaseUri;
   collection.baseMetadataUri = metadataBaseUri;
+  await collection.save();
+  const readiness = await assertCollectionMetadataReady(collection._id);
+  if (!readiness.deployable) {
+    collection.status = "failed";
+    await collection.save();
+    await updateJob(jobId, {
+      status: "failed",
+      stage: "complete",
+      progressCurrent: job.supply,
+      failedCount,
+      errorMessage: `Metadata readiness validation failed: ${readiness.reason}`
+    });
+    return;
+  }
   collection.status = "metadata_ready";
   await collection.save();
   await updateJob(jobId, { status: "completed", stage: "complete", progressCurrent: job.supply, failedCount: 0, completedAt: new Date() });

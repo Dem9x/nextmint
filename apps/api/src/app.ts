@@ -16,14 +16,18 @@ import { collectionRouter } from "./routes/collection.routes.js";
 import { contractRouter } from "./routes/contract.routes.js";
 import { cryptoRouter } from "./routes/crypto.routes.js";
 import { dashboardRouter } from "./routes/dashboard.routes.js";
+import { discoveryRouter } from "./routes/discovery.routes.js";
 import { earningsRouter } from "./routes/earnings.routes.js";
 import { generationRouter } from "./routes/generation.routes.js";
 import { ipfsRouter } from "./routes/ipfs.routes.js";
 import { launchpadRouter } from "./routes/launchpad.routes.js";
+import { marketplaceRouter } from "./routes/marketplace.routes.js";
 import { networkRouter } from "./routes/network.routes.js";
 import { nftRouter } from "./routes/nft.routes.js";
+import { nftItemRouter } from "./routes/nft-item.routes.js";
 import { pricingRouter } from "./routes/pricing.routes.js";
 import { subscriptionRouter } from "./routes/subscription.routes.js";
+import { userRouter } from "./routes/user.routes.js";
 
 export function createApp() {
   const app = express();
@@ -45,14 +49,18 @@ export function createApp() {
   app.use("/api/collections", collectionRouter);
   app.use("/api/ipfs", ipfsRouter);
   app.use("/api/launchpad", launchpadRouter);
+  app.use("/api/marketplace", marketplaceRouter);
   app.use("/api/network", networkRouter);
   app.use("/api/nft", nftRouter);
+  app.use("/api/nft-items", nftItemRouter);
   app.use("/api/pricing", pricingRouter);
   app.use("/api/contracts", contractRouter);
   app.use("/api/crypto", cryptoRouter);
   app.use("/api/dashboard", dashboardRouter);
+  app.use("/api/discovery", discoveryRouter);
   app.use("/api/earnings", earningsRouter);
   app.use("/api/subscription", subscriptionRouter);
+  app.use("/api/users", userRouter);
   app.use("/api/admin", adminRouter);
 
   app.use(notFoundHandler);

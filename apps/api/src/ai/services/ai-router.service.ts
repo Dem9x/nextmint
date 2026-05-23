@@ -20,6 +20,10 @@ const providers: Record<AIProviderName, BaseAIProvider | undefined> = {
   "local-template-fallback": undefined
 };
 
+// Production note:
+// Keep provider keys, anti-abuse rules, and production fallback strategy private.
+// This public implementation is intended for demo/testnet use.
+
 function now() {
   return Date.now();
 }

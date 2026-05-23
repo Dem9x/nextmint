@@ -11,21 +11,36 @@ const userSchema = new Schema(
     avatarUrl: String,
     role: { type: String, enum: ["user", "creator", "admin"], default: "user", index: true },
     authProvider: { type: String, enum: ["email", "wallet", "google"], default: "email", index: true },
+    walletAddress: { type: String, lowercase: true, index: true, sparse: true },
+    linkedWallets: [
+      {
+        address: { type: String, lowercase: true, required: true },
+        chainId: Number,
+        linkedAt: { type: Date, default: Date.now },
+        isPrimary: { type: Boolean, default: false }
+      }
+    ],
+    walletLinkedAt: Date,
+    walletVerifiedAt: Date,
     primaryWallet: { type: String, lowercase: true, index: true, sparse: true },
     primaryWalletAddress: { type: String, lowercase: true, index: true, sparse: true },
     wallets: [{ type: String, lowercase: true }],
     referralCode: { type: String, uppercase: true, index: true, sparse: true },
-    credits: { type: Number, default: 25, min: 0 },
+    credits: { type: Number, default: 5, min: 0 },
     paidCredits: { type: Number, default: 0, min: 0 },
-    bonusCredits: { type: Number, default: 25, min: 0 },
+    bonusCredits: { type: Number, default: 5, min: 0 },
     subscriptionId: { type: Schema.Types.ObjectId, ref: "Subscription" },
-    plan: { type: String, enum: ["free", "starter", "pro", "enterprise"], default: "free", index: true },
-    currentPlan: { type: String, enum: ["free", "starter", "pro", "enterprise"], default: "free", index: true },
+    plan: { type: String, enum: ["free", "starter", "creator", "pro", "enterprise"], default: "free", index: true },
+    currentPlan: { type: String, enum: ["free", "starter", "creator", "pro", "enterprise"], default: "free", index: true },
     planStartedAt: Date,
     planExpiresAt: Date,
     subscriptionStatus: { type: String, enum: ["active", "expired", "cancelled", "pending_payment", "grace_period"], default: "active", index: true },
     billingPeriod: { type: String, enum: ["free", "monthly", "yearly", "custom"], default: "free" },
     planLimits: Schema.Types.Mixed,
+    isVerifiedCreator: { type: Boolean, default: false, index: true },
+    verifiedCreatorAt: Date,
+    verifiedCreatorReason: String,
+    creatorBadge: { type: String, enum: ["none", "verified", "partner", "team"], default: "none", index: true },
     isBanned: { type: Boolean, default: false, index: true },
     authNonce: { type: String, index: true },
     lastLoginAt: Date
@@ -34,6 +49,7 @@ const userSchema = new Schema(
 );
 
 userSchema.index({ email: 1, primaryWalletAddress: 1 });
+userSchema.index({ walletAddress: 1 }, { unique: true, sparse: true });
 userSchema.index({ primaryWallet: 1 }, { unique: true, sparse: true });
 userSchema.index({ createdAt: -1 });
 

@@ -20,6 +20,10 @@
     "deploy-factory:sepolia": "hardhat run scripts/deploy-launchpad-factory.ts --network sepolia",
     "deploy-factory:arbitrum-sepolia": "hardhat run scripts/deploy-launchpad-factory.ts --network arbitrumSepolia",
     "deploy-factory:bsc-testnet": "hardhat run scripts/deploy-launchpad-factory.ts --network bscTestnet",
+    "deploy-marketplace:base-sepolia": "hardhat run scripts/deploy-marketplace.ts --network baseSepolia",
+    "deploy-marketplace:sepolia": "hardhat run scripts/deploy-marketplace.ts --network sepolia",
+    "deploy-marketplace:arbitrum-sepolia": "hardhat run scripts/deploy-marketplace.ts --network arbitrumSepolia",
+    "deploy-marketplace:bsc-testnet": "hardhat run scripts/deploy-marketplace.ts --network bscTestnet",
     "verify:contract:base-sepolia": "hardhat run scripts/verify.ts --network baseSepolia"
   },
   "dependencies": {

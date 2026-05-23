@@ -19,11 +19,17 @@ type GenerationQuote = {
   estimatedCredits: number;
   estimatedCostUsd: number | null;
   userCredits: number;
-  activePlan?: "free" | "starter" | "pro" | "enterprise";
+  activePlan?: "free" | "starter" | "creator" | "pro" | "enterprise";
   planSource?: "user" | "subscription";
   maxSupplyAllowed?: number;
+  maxImageSizeAllowed?: number;
+  marketplaceListingEnabled?: boolean;
   launchEnabled?: boolean;
   planAllowsSupply?: boolean;
+  planAllowsImageSize?: boolean;
+  width?: number;
+  height?: number;
+  reasons?: string[];
   canGenerate: boolean;
 };
 
@@ -69,6 +75,7 @@ export default function CollectionStudioPage() {
   const [maxMintPerWallet, setMaxMintPerWallet] = useState(5);
   const [royaltyBps, setRoyaltyBps] = useState(500);
   const [startAt, setStartAt] = useState("");
+  const [imageSize, setImageSize] = useState<512 | 768 | 1024>(768);
   const [quote, setQuote] = useState<GenerationQuote>();
   const [status, setStatus] = useState<GenerationStatus>();
   const [collectionId, setCollectionId] = useState<string>();
@@ -89,7 +96,7 @@ export default function CollectionStudioPage() {
 
   async function refreshQuote(nextSupply = actualSupply) {
     try {
-      const result = await api<GenerationQuote>(`/api/collections/generation-quote?supply=${nextSupply}&provider=replicate`);
+      const result = await api<GenerationQuote>(`/api/collections/generation-quote?supply=${nextSupply}&width=${imageSize}&height=${imageSize}&chainId=${selectedChainId}&provider=replicate`);
       setQuote(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Quote unavailable");
@@ -98,7 +105,7 @@ export default function CollectionStudioPage() {
 
   useEffect(() => {
     void refreshQuote(actualSupply);
-  }, [actualSupply]);
+  }, [actualSupply, imageSize, selectedChainId]);
 
   useEffect(() => {
     if (!collectionId) return;
@@ -168,6 +175,8 @@ async function generateCollection() {
           mintPrice,
           maxMintPerWallet,
           royaltyBps,
+          width: imageSize,
+          height: imageSize,
           publicMintStartAt: startAt ? new Date(startAt).toISOString() : undefined
         })
       })
@@ -245,6 +254,21 @@ async function generateCollection() {
                   <input className="rounded-md border border-white/10 bg-black/40 px-3 py-2 text-sm" placeholder="Custom" value={customSupply} onChange={(event) => setCustomSupply(event.target.value)} />
                 </div>
               </div>
+              <div>
+                <p className="text-sm text-muted">Image size</p>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {([512, 768, 1024] as const).map((option) => (
+                    <button
+                      key={option}
+                      className={`rounded-md border px-3 py-2 text-sm ${imageSize === option ? "border-cyan bg-cyan/10 text-cyan" : "border-white/10"}`}
+                      onClick={() => setImageSize(option)}
+                      type="button"
+                    >
+                      {option}px
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block text-sm text-muted">Mint Price<input className="mt-2 w-full rounded-md bg-black/40 p-3 text-white" value={mintPrice} onChange={(event) => setMintPrice(event.target.value)} /></label>
                 <label className="block text-sm text-muted">Max Per Wallet<input className="mt-2 w-full rounded-md bg-black/40 p-3 text-white" type="number" value={maxMintPerWallet} onChange={(event) => setMaxMintPerWallet(Number(event.target.value))} /></label>
@@ -254,9 +278,12 @@ async function generateCollection() {
               <div className="rounded-md border border-cyan/20 bg-cyan/10 p-3 text-sm">
                 <p>Estimated credits: {quote?.estimatedCredits ?? actualSupply}</p>
                 <p>User credits: {quote?.userCredits ?? "Loading"}</p>
-                {quote && !quote.launchEnabled && <p className="mt-2 text-rose">Your active plan cannot publish public launchpad collections yet.</p>}
+                <p>Selected image size: {quote?.width ?? imageSize}px</p>
+                <p>Plan max image size: {quote?.maxImageSizeAllowed ?? user?.planLimits?.maxImageSize ?? "unknown"}px</p>
+                <p>Launchpad publish: {quote?.launchEnabled ? "enabled" : "not included"}</p>
+                <p>Marketplace listing: {quote?.marketplaceListingEnabled ? "enabled" : "external links only"}</p>
                 {quote && quote.launchEnabled && !quote.planAllowsSupply && <p className="mt-2 text-rose">Your {quote.activePlan} plan supports up to {quote.maxSupplyAllowed} NFTs per public collection.</p>}
-                {quote && quote.planAllowsSupply && quote.userCredits < quote.estimatedCredits && <p className="mt-2 text-rose">Insufficient credits. Buy credits before generating.</p>}
+                {quote?.reasons?.map((reason) => <p key={reason} className="mt-2 text-rose">{reason}</p>)}
               </div>
               <Button className="w-full" disabled={isLoading || Boolean(quote && !quote.canGenerate) || Boolean(collectionId)} onClick={generateCollection}>
                 {isLoading ? "Starting..." : `Generate ${actualSupply} Collection`}

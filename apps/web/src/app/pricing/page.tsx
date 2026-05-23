@@ -7,9 +7,30 @@ import { TokenPriceTicker } from "@/components/pricing/TokenPriceTicker";
 import { ChainFeeEstimateCard } from "@/components/pricing/ChainFeeEstimateCard";
 import { api } from "@/lib/api";
 import { withMinimumDelay } from "@/lib/loading";
+import { LoadingFX } from "../../components/loaders/origianLoader";
+
+type PricingPlan = {
+  id: string;
+  name: string;
+  billingPeriod?: "free" | "monthly" | "yearly" | "custom";
+  durationDays?: number | null;
+  priceUsd?: number | null;
+  monthlyUsdPrice?: number | null;
+  yearlyUsdPrice?: number | null;
+  credits: number | null;
+  maxImageSize?: number;
+  maxCollectionSupply?: number;
+  allowedCollectionSize?: number;
+  canPublishLaunchpad?: boolean;
+  canDeployContract?: boolean;
+  marketplaceListingEnabled?: boolean;
+  includedLaunchpadPublishes?: number | null;
+  priorityQueue?: boolean;
+  features: string[];
+};
 
 export default function PricingPage() {
-  const [plans, setPlans] = useState<Array<{ id: string; name: string; billingPeriod?: "free" | "monthly" | "yearly" | "custom"; durationDays?: number | null; priceUsd?: number | null; monthlyUsdPrice?: number | null; yearlyUsdPrice?: number | null; credits: number | null; features: string[] }>>([]);
+  const [plans, setPlans] = useState<PricingPlan[]>([]);
   const [tokens, setTokens] = useState<Array<{ tokenSymbol: string; priceUsd: number; provider: string }>>([]);
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("monthly");
   const [isLoading, setIsLoading] = useState(true);
@@ -17,7 +38,7 @@ export default function PricingPage() {
 
   useEffect(() => {
     withMinimumDelay(Promise.all([
-      api<{ plans: typeof plans }>("/api/pricing/plans"),
+      api<{ plans: PricingPlan[] }>("/api/pricing/plans"),
       api<{ tokens: typeof tokens }>("/api/pricing/tokens")
     ]))
       .then(([planResult, tokenResult]) => {
@@ -27,7 +48,16 @@ export default function PricingPage() {
       .catch((err) => setError(err instanceof Error ? err.message : "Pricing unavailable"))
       .finally(() => setIsLoading(false));
   }, []);
-
+/*
+   * SCI-FI LOADING SCREEN
+   */
+  if (isLoading) {
+    return (
+      <main className="h-screen overflow-hidden bg-black">
+        <LoadingFX />
+      </main>
+    );
+  }
   return (
     <main className="min-h-screen bg-background">
       <SiteHeader />
@@ -35,7 +65,7 @@ export default function PricingPage() {
         <h1 className="text-4xl font-black">Crypto Pricing</h1>
         <p className="mt-3 text-muted">No Stripe. Quotes are calculated server-side from pricing providers and verified on-chain.</p>
         <div className="mt-6 inline-flex rounded-full border border-white/10 bg-white/[0.04] p-1">
-          {(["monthly", "yearly"] as const).map((period) => (
+          {(["monthly", "yearly"] as const).filter((period) => period === "monthly" || plans.some((plan) => plan.billingPeriod === period)).map((period) => (
             <button key={period} className={`rounded-full px-4 py-2 text-sm font-semibold capitalize ${billingPeriod === period ? "bg-cyan text-black" : "text-muted hover:text-white"}`} onClick={() => setBillingPeriod(period)}>
               {period}{period === "yearly" ? " · save 20%" : ""}
             </button>

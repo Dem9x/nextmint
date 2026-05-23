@@ -1,2 +1,5 @@
-import { PricingSkeleton } from "@/components/skeletons/PricingSkeleton";
-export default function Loading() { return <PricingSkeleton />; }
+import NFTDominoLoading from "@/components/loaders/DominoEffect";
+
+export default function Loading() {
+  return <NFTDominoLoading />;
+}

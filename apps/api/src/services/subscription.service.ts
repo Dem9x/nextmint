@@ -4,9 +4,28 @@ import { CryptoTransaction } from "../models/CryptoTransaction.js";
 import { AppError } from "../middleware/error.js";
 import { getPlatformSettings, getSubscriptionPlan } from "./platform-settings.service.js";
 
-export type PlanId = "free" | "starter" | "pro" | "enterprise";
+export type PlanId = "free" | "starter" | "creator" | "pro" | "enterprise";
 
-const freeLimits = { generations: 10, maxCollectionSize: 10, launchEnabled: false, deploymentEnabled: false };
+type CostSafePlanLimits = {
+  monthlyCredits: number | null;
+  generations: number;
+  maxImageSize: number;
+  maxCollectionSize: number;
+  launchEnabled: boolean;
+  deploymentEnabled: boolean;
+  marketplaceListingEnabled: boolean;
+  priorityQueue: boolean;
+  testnetOnly: boolean;
+  includedLaunchpadPublishes: number | null;
+};
+
+const defaultPlanLimits: Record<PlanId, CostSafePlanLimits> = {
+  free: { monthlyCredits: 5, generations: 5, maxImageSize: 512, maxCollectionSize: 5, launchEnabled: false, deploymentEnabled: false, marketplaceListingEnabled: false, priorityQueue: false, testnetOnly: true, includedLaunchpadPublishes: 0 },
+  starter: { monthlyCredits: 120, generations: 120, maxImageSize: 768, maxCollectionSize: 50, launchEnabled: false, deploymentEnabled: false, marketplaceListingEnabled: false, priorityQueue: false, testnetOnly: false, includedLaunchpadPublishes: 0 },
+  creator: { monthlyCredits: 600, generations: 600, maxImageSize: 768, maxCollectionSize: 300, launchEnabled: true, deploymentEnabled: true, marketplaceListingEnabled: true, priorityQueue: false, testnetOnly: false, includedLaunchpadPublishes: 1 },
+  pro: { monthlyCredits: 2500, generations: 2500, maxImageSize: 1024, maxCollectionSize: 1000, launchEnabled: true, deploymentEnabled: true, marketplaceListingEnabled: true, priorityQueue: true, testnetOnly: false, includedLaunchpadPublishes: 5 },
+  enterprise: { monthlyCredits: null, generations: 10000, maxImageSize: 2048, maxCollectionSize: 10000, launchEnabled: true, deploymentEnabled: true, marketplaceListingEnabled: true, priorityQueue: true, testnetOnly: false, includedLaunchpadPublishes: null }
+};
 
 function isActiveSubscription(subscription: any) {
   if (!subscription) return false;
@@ -16,7 +35,7 @@ function isActiveSubscription(subscription: any) {
 }
 
 function normalizePlan(plan?: string): PlanId {
-  return ["starter", "pro", "enterprise"].includes(plan ?? "") ? (plan as PlanId) : "free";
+  return ["starter", "creator", "pro", "enterprise"].includes(plan ?? "") ? (plan as PlanId) : "free";
 }
 
 export async function getActiveUserPlan(userId: string) {
@@ -31,16 +50,18 @@ export async function getActiveUserPlan(userId: string) {
   const planConfig = activeSubscription
     ? ((settings.subscriptionPlans as any[]) ?? []).find((item) => item.id === activeSubscription.planId || item.tier === plan)
     : ((settings.subscriptionPlans as any[]) ?? []).find((item) => item.id === plan || (item.tier === plan && item.billingPeriod === "monthly"));
+  const defaults = defaultPlanLimits[plan];
   const maxSupplyByPlan = {
-    free: 0,
-    starter: 100,
+    free: 5,
+    starter: 50,
+    creator: 300,
     pro: 1000,
     enterprise: 10000,
     ...((settings.maxSupplyByPlan as Record<string, number> | undefined) ?? {})
   };
-  const maxCollectionSize = Number(planConfig?.allowedCollectionSize ?? maxSupplyByPlan[plan] ?? 0);
-  const launchEnabled = Boolean(planConfig?.launchEnabled ?? maxCollectionSize > 0);
-  const deploymentEnabled = Boolean(planConfig?.deploymentEnabled ?? plan !== "free");
+  const maxCollectionSize = Number(planConfig?.allowedCollectionSize ?? planConfig?.maxCollectionSupply ?? maxSupplyByPlan[plan] ?? defaults.maxCollectionSize);
+  const launchEnabled = Boolean(planConfig?.launchEnabled ?? defaults.launchEnabled);
+  const deploymentEnabled = Boolean(planConfig?.deploymentEnabled ?? planConfig?.canDeployContract ?? defaults.deploymentEnabled);
 
   if (activeSubscription && user && (user.plan !== plan || String(user.subscriptionId ?? "") !== String(activeSubscription._id))) {
     await User.updateOne({ _id: userId }, { plan, subscriptionId: activeSubscription._id });
@@ -51,14 +72,19 @@ export async function getActiveUserPlan(userId: string) {
     source: activeSubscription ? "subscription" : "user",
     subscription: activeSubscription,
     limits: {
-      generations: subscription?.limits?.generations ?? planConfig?.limits?.generations ?? freeLimits.generations,
+      monthlyCredits: planConfig?.monthlyCredits ?? planConfig?.credits ?? defaults.monthlyCredits,
+      generations: subscription?.limits?.generations ?? planConfig?.limits?.generations ?? planConfig?.credits ?? defaults.generations,
       maxCollectionSize,
       maxCollectionSupply: maxCollectionSize,
+      maxImageSize: Number(planConfig?.maxImageSize ?? defaults.maxImageSize),
+      testnetOnly: Boolean(planConfig?.testnetOnly ?? defaults.testnetOnly),
       launchEnabled,
       canPublishLaunchpad: launchEnabled,
       deploymentEnabled,
       canDeployContract: deploymentEnabled,
-      priorityQueue: Boolean(planConfig?.priorityQueue)
+      marketplaceListingEnabled: Boolean(planConfig?.marketplaceListingEnabled ?? defaults.marketplaceListingEnabled),
+      priorityQueue: Boolean(planConfig?.priorityQueue ?? defaults.priorityQueue),
+      includedLaunchpadPublishes: planConfig?.includedLaunchpadPublishes ?? defaults.includedLaunchpadPublishes
     }
   };
 }
@@ -81,10 +107,15 @@ export function getPlanLimits(plan: any) {
   return {
     maxCollectionSupply: Number(plan.maxCollectionSupply ?? plan.allowedCollectionSize ?? 0),
     maxCollectionSize: Number(plan.maxCollectionSupply ?? plan.allowedCollectionSize ?? 0),
+    maxImageSize: Number(plan.maxImageSize ?? 768),
+    monthlyCredits: plan.monthlyCredits ?? plan.credits ?? null,
+    testnetOnly: Boolean(plan.testnetOnly),
     canPublishLaunchpad: Boolean(plan.canPublishLaunchpad ?? plan.launchEnabled),
     canDeployContract: Boolean(plan.canDeployContract ?? plan.deploymentEnabled),
     launchEnabled: Boolean(plan.canPublishLaunchpad ?? plan.launchEnabled),
     deploymentEnabled: Boolean(plan.canDeployContract ?? plan.deploymentEnabled),
+    marketplaceListingEnabled: Boolean(plan.marketplaceListingEnabled),
+    includedLaunchpadPublishes: plan.includedLaunchpadPublishes ?? 0,
     priorityQueue: Boolean(plan.priorityQueue)
   };
 }
@@ -132,7 +163,13 @@ export async function activateSubscriptionFromPayment(paymentId: string) {
     lastPayment: payment._id,
     limits: {
       generations: plan.credits ?? existing?.limits?.generations ?? 10,
-      maxCollectionSize: limits.maxCollectionSupply
+      monthlyCredits: plan.monthlyCredits ?? plan.credits ?? null,
+      maxCollectionSize: limits.maxCollectionSupply,
+      maxImageSize: limits.maxImageSize,
+      testnetOnly: limits.testnetOnly,
+      launchEnabled: limits.launchEnabled,
+      marketplaceListingEnabled: limits.marketplaceListingEnabled,
+      includedLaunchpadPublishes: limits.includedLaunchpadPublishes
     }
   };
 

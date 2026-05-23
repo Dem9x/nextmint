@@ -4,6 +4,7 @@ import { logger } from "../config/logger.js";
 import { Generation } from "../models/Generation.js";
 import { queueConnection } from "./connection.js";
 import { aiRouterService } from "../ai/services/ai-router.service.js";
+import { uploadImageFromUrl } from "../services/ipfs/ipfs.service.js";
 
 export function startImageGenerationWorker() {
   const worker = new Worker<{ generationId: string }>(
@@ -68,10 +69,31 @@ export function startImageGenerationWorker() {
           : result.provider;
 
       generation.set("model", result.model);
-      generation.imageUrl = result.data.imageUrl;
+      generation.status = "uploading_image_ipfs";
+      generation.progress = 68;
+      await generation.save();
+
+      let imageUpload: Awaited<ReturnType<typeof uploadImageFromUrl>>;
+      try {
+        imageUpload = await uploadImageFromUrl(result.data.imageUrl, { key: `generations/${String(generation._id)}/image` });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        generation.status = "failed";
+        generation.error = `Filebase/IPFS upload failed: ${message}`;
+        await generation.save();
+        throw error;
+      }
+      generation.imageUrl = imageUpload.gatewayUrl;
+      generation.imageIpfsUri = imageUpload.ipfsUri;
       generation.output = {
         ...(generation.output as Record<string, unknown>),
-        image: result.data
+        image: {
+          ...result.data,
+          originalProviderUrl: result.data.imageUrl,
+          imageIpfsUri: imageUpload.ipfsUri,
+          gatewayUrl: imageUpload.gatewayUrl,
+          ipfsHash: imageUpload.ipfsHash
+        }
       };
       generation.usedFallback = generation.usedFallback || result.usedFallback;
       generation.status = "image_ready";

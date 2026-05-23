@@ -10,6 +10,8 @@ import { NftOnchainDetails } from "@/components/nft/NftOnchainDetails";
 import { NftResultCard } from "@/components/nft/NftResultCard";
 import { NftResultSkeleton } from "@/components/nft/NftResultSkeleton";
 import { NftSuccessHero } from "@/components/nft/NftSuccessHero";
+import { ExternalMarketplaceLinks } from "@/components/nft/ExternalMarketplaceLinks";
+import { ListForSaleModal } from "@/components/nft/ListForSaleModal";
 import { getNftItem, type NftResultItem } from "@/lib/api/nft";
 import { getExplorerAddressUrl, getExplorerTokenUrl, getExplorerTxUrl } from "@/lib/web3/explorer";
 
@@ -18,6 +20,7 @@ export default function NftResultPage() {
   const [nft, setNft] = useState<NftResultItem>();
   const [error, setError] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
+  const [showListModal, setShowListModal] = useState(false);
 
   useEffect(() => {
     if (!params.nftItemId) return;
@@ -30,6 +33,7 @@ export default function NftResultPage() {
   const txUrl = nft?.explorerTxUrl ?? (nft?.chainId ? getExplorerTxUrl(nft.chainId, nft.mintTxHash) : undefined);
   const contractUrl = nft?.chainId ? getExplorerAddressUrl(nft.chainId, nft.contractAddress) : undefined;
   const tokenUrl = nft?.explorerTokenUrl ?? (nft?.chainId ? getExplorerTokenUrl(nft.chainId, nft.contractAddress, nft.tokenId) : undefined);
+  const canListForSale = Boolean(nft?.mintStatus === "minted" && nft.chainId && nft.contractAddress && nft.tokenId);
 
   return (
     <main className="min-h-screen bg-background">
@@ -56,6 +60,28 @@ export default function NftResultPage() {
             <NftResultCard nft={nft} />
             <div className="space-y-6">
               <NftOnchainDetails nft={nft} />
+              <div className="rounded-xl border border-cyan/20 bg-cyan/[0.04] p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold uppercase tracking-[0.14em] text-cyan">NEXMINT Marketplace</p>
+                    <p className="mt-1 text-xs text-muted">List this minted NFT for a fixed-price sale inside NEXMINT.</p>
+                  </div>
+                  <Button disabled={!canListForSale} onClick={() => setShowListModal(true)}>
+                    List for Sale
+                  </Button>
+                </div>
+                {!canListForSale && (
+                  <p className="mt-3 text-xs text-muted">Listing unlocks after the NFT has chain, contract, and token ID data.</p>
+                )}
+              </div>
+              {nft.chainId ? (
+                <ExternalMarketplaceLinks
+                  chainId={nft.chainId}
+                  contractAddress={nft.contractAddress}
+                  tokenId={nft.tokenId}
+                  txHash={nft.mintTxHash}
+                />
+              ) : null}
               <NftAttributesGrid attributes={nft.attributes} />
               <div className="flex flex-wrap gap-3 rounded-xl border border-white/10 bg-panel p-5">
                 {txUrl && <a href={txUrl} target="_blank" rel="noreferrer"><Button>View Transaction</Button></a>}
@@ -69,6 +95,14 @@ export default function NftResultPage() {
             </div>
           </div>
         </section>
+      )}
+      {nft && (
+        <ListForSaleModal
+          open={showListModal}
+          onClose={() => setShowListModal(false)}
+          nft={nft}
+          onListed={() => setShowListModal(false)}
+        />
       )}
     </main>
   );

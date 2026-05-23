@@ -27,6 +27,8 @@ export type ChainRegistryEntry = {
   confirmations: number;
   isTestnet: true;
   paymentContract?: `0x${string}`;
+  singleNftMinterContract?: `0x${string}`;
+  marketplaceContract?: `0x${string}`;
   treasuryAddress?: `0x${string}`;
   privateKey?: `0x${string}`;
 };
@@ -53,6 +55,8 @@ export const CHAIN_REGISTRY: Record<number, ChainRegistryEntry> = {
     confirmations: 2,
     isTestnet: true,
     paymentContract: address(env.BASE_SEPOLIA_PAYMENT_CONTRACT),
+    singleNftMinterContract: address(env.SINGLE_NFT_MINTER_BASE_SEPOLIA ?? env.BASE_SEPOLIA_SINGLE_NFT_CONTRACT),
+    marketplaceContract: address(env.NEXMINT_MARKETPLACE_BASE_SEPOLIA),
     treasuryAddress: address(env.BASE_SEPOLIA_TREASURY_ADDRESS),
     privateKey: privateKey(env.BASE_SEPOLIA_PRIVATE_KEY ?? env.DEPLOYER_PRIVATE_KEY)
   },
@@ -67,6 +71,8 @@ export const CHAIN_REGISTRY: Record<number, ChainRegistryEntry> = {
     confirmations: 2,
     isTestnet: true,
     paymentContract: address(env.SEPOLIA_PAYMENT_CONTRACT),
+    singleNftMinterContract: address(env.SINGLE_NFT_MINTER_SEPOLIA),
+    marketplaceContract: address(env.NEXMINT_MARKETPLACE_SEPOLIA),
     treasuryAddress: address(env.SEPOLIA_TREASURY_ADDRESS),
     privateKey: privateKey(env.SEPOLIA_PRIVATE_KEY)
   },
@@ -124,4 +130,12 @@ export function getExplorerTxUrl(chainId: number, txHash: string) {
 
 export function getRequiredConfirmations(chainId: number) {
   return assertSupportedChain(chainId).confirmations;
+}
+
+export function getSingleNftMinterContract(chainId: number) {
+  return assertSupportedChain(chainId).singleNftMinterContract;
+}
+
+export function getMarketplaceContract(chainId: number) {
+  return assertSupportedChain(chainId).marketplaceContract;
 }

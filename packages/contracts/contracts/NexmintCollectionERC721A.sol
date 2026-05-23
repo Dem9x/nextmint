@@ -99,6 +99,10 @@ contract NexmintCollectionERC721A is ERC721A, ERC2981, Ownable, Pausable, Reentr
         _safeMint(to, quantity);
     }
 
+    function mintedSupply() external view returns (uint256) {
+        return _totalMinted();
+    }
+
     function setMintConfig(uint256 price, uint64 startAt, uint64 endAt, uint256 nextMaxMintPerWallet) external onlyOwner {
         require(nextMaxMintPerWallet > 0, "wallet limit zero");
         publicMintPrice = price;

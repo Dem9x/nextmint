@@ -1,2 +1,5 @@
-import { DashboardSkeleton } from "@/components/skeletons/DashboardSkeleton";
-export default function Loading() { return <DashboardSkeleton />; }
+import NFTDominoLoading from "@/components/loaders/DominoEffect";
+
+export default function Loading() {
+  return <NFTDominoLoading />;
+}

@@ -1,8 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { env } from "../../config/env.js";
+import { logger } from "../../config/logger.js";
 import { AppError } from "../../middleware/error.js";
 import { uploadBufferToIpfs, uploadJsonToIpfs } from "./pinata.service.js";
 import { uploadBufferToNftStorage, uploadJsonToNftStorage } from "./nft-storage.service.js";
 import { buildIpfsGatewayUrl } from "./gateway-url.js";
+import { uploadBufferToFilebase, uploadImageUrlToFilebase } from "./filebase.service.js";
 
 type IpfsUploadResult = {
   ipfsHash: string;
@@ -10,10 +13,18 @@ type IpfsUploadResult = {
   gatewayUrl: string;
 };
 
+// Production note:
+// Durable NFT metadata and gateway policy are business-sensitive. Keep provider
+// credentials private and validate CIDs/baseURI before publishing collections.
+
 export function getGatewayUrl(ipfsUri: string) {
   const cid = ipfsUri.replace("ipfs://", "");
-  const gateway = env.IPFS_PROVIDER === "nft_storage" ? env.NFT_STORAGE_GATEWAY_URL : env.PINATA_GATEWAY_URL || env.PINATA_GATEWAY;
-  const gatewayToken = env.IPFS_PROVIDER === "nft_storage" ? undefined : env.PINATA_GATEWAY_TOKEN;
+  const gateway = env.IPFS_PROVIDER === "nft_storage"
+    ? env.NFT_STORAGE_GATEWAY_URL
+    : env.IPFS_PROVIDER === "filebase"
+      ? env.FILEBASE_GATEWAY
+      : env.PINATA_GATEWAY_URL || env.PINATA_GATEWAY;
+  const gatewayToken = env.IPFS_PROVIDER === "pinata" || env.IPFS_PROVIDER === "auto" ? env.PINATA_GATEWAY_TOKEN : undefined;
   return buildIpfsGatewayUrl(gateway, cid, gatewayToken);
 }
 
@@ -23,6 +34,10 @@ function isPinataConfigured() {
 
 function isNftStorageConfigured() {
   return Boolean(env.NFT_STORAGE_TOKEN || env.NFT_STORAGE_API_KEY);
+}
+
+function isFilebaseConfigured() {
+  return Boolean(env.FILEBASE_ACCESS_KEY && env.FILEBASE_SECRET_KEY && env.FILEBASE_BUCKET);
 }
 
 async function withIpfsProviderFallback<T>(operation: (provider: "pinata" | "nft_storage") => Promise<T>) {
@@ -48,6 +63,10 @@ async function withIpfsProviderFallback<T>(operation: (provider: "pinata" | "nft
 }
 
 export async function uploadBuffer(name: string, buffer: Buffer, contentType = "application/octet-stream"): Promise<IpfsUploadResult> {
+  if (env.IPFS_PROVIDER === "filebase") {
+    const result = await uploadBufferToFilebase({ key: `uploads/${Date.now()}-${name}`, buffer, contentType });
+    return { ipfsHash: result.ipfsHash, ipfsUri: result.ipfsUri, gatewayUrl: result.gatewayUrl };
+  }
   const result = await withIpfsProviderFallback((provider) => (
     provider === "pinata"
       ? uploadBufferToIpfs(name, buffer, contentType)
@@ -56,7 +75,14 @@ export async function uploadBuffer(name: string, buffer: Buffer, contentType = "
   return { ipfsHash: result.cid, ipfsUri: result.uri, gatewayUrl: result.url };
 }
 
-export async function uploadImageFromUrl(imageUrl: string): Promise<IpfsUploadResult> {
+export async function uploadImageFromUrl(imageUrl: string, options: { key?: string } = {}): Promise<IpfsUploadResult> {
+  if (env.IPFS_PROVIDER === "filebase" || (env.IPFS_PROVIDER === "auto" && isFilebaseConfigured())) {
+    const result = await uploadImageUrlToFilebase({
+      imageUrl,
+      key: options.key ?? `generations/${Date.now()}-${randomUUID()}/image`
+    });
+    return { ipfsHash: result.ipfsHash, ipfsUri: result.ipfsUri, gatewayUrl: result.gatewayUrl };
+  }
   const response = await fetch(imageUrl);
   if (!response.ok) throw new AppError(response.status, `Unable to fetch generated image: ${response.statusText}`);
   const contentType = response.headers.get("content-type") ?? "image/png";
@@ -67,6 +93,14 @@ export async function uploadImageFromUrl(imageUrl: string): Promise<IpfsUploadRe
 }
 
 export async function uploadJson(metadata: unknown): Promise<IpfsUploadResult> {
+  if (env.IPFS_PROVIDER === "filebase") {
+    const result = await uploadBufferToFilebase({
+      key: `metadata/${Date.now()}-${randomUUID()}.json`,
+      buffer: Buffer.from(JSON.stringify(metadata)),
+      contentType: "application/json"
+    });
+    return { ipfsHash: result.ipfsHash, ipfsUri: result.ipfsUri, gatewayUrl: result.gatewayUrl };
+  }
   const result = await withIpfsProviderFallback((provider) => (
     provider === "pinata"
       ? uploadJsonToIpfs("nexmint-ai-metadata.json", metadata)
@@ -76,6 +110,12 @@ export async function uploadJson(metadata: unknown): Promise<IpfsUploadResult> {
 }
 
 export async function uploadJsonDirectory(files: Array<{ path: string; json: unknown }>): Promise<IpfsUploadResult> {
+  if (env.IPFS_PROVIDER === "filebase") {
+    logger.warn("Filebase S3 directory CID upload is not enabled; using Pinata legacy folder upload for ERC721A metadata baseURI correctness.");
+    if (!isPinataConfigured()) {
+      throw new AppError(500, "Metadata directory upload requires Pinata fallback until Filebase directory CID upload is implemented. Set PINATA_JWT or use IPFS_PROVIDER=pinata.");
+    }
+  }
   const buildForm = () => {
     const form = new FormData();
     files.forEach((file, index) => {
@@ -117,6 +157,12 @@ export async function uploadJsonDirectory(files: Array<{ path: string; json: unk
       const data = (await response.json()) as { IpfsHash: string };
       const cid = data.IpfsHash;
       const gateway = env.PINATA_GATEWAY_URL || env.PINATA_GATEWAY;
+      const baseUri = `ipfs://${cid}/`;
+      logger.info({
+        cid,
+        expectedFirstTokenUri: `${baseUri}1.json`,
+        expectedLastTokenUri: files.length ? `${baseUri}${files.length}.json` : undefined
+      }, "Metadata directory CID uploaded");
       return { cid, uri: `ipfs://${cid}`, url: buildIpfsGatewayUrl(gateway, cid, env.PINATA_GATEWAY_TOKEN) };
     }
       const response = await fetch("https://api.nft.storage/upload", {

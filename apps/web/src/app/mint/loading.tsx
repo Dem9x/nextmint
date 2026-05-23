@@ -1,2 +1,5 @@
-import { MintPageSkeleton } from "@/components/skeletons/MintPageSkeleton";
-export default function Loading() { return <MintPageSkeleton />; }
+import NFTDominoLoading from "@/components/loaders/DominoEffect";
+
+export default function Loading() {
+  return <NFTDominoLoading />;
+}

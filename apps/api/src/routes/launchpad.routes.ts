@@ -14,6 +14,7 @@ import { getPublicClient } from "../services/blockchain/rpc-client.service.js";
 import { assertErc721MintOwnership } from "../services/blockchain/erc721-verifier.service.js";
 import { getTokenPrice } from "../pricing/services/crypto-pricing.service.js";
 import { recordMintRevenue } from "../services/revenue/revenue-split.service.js";
+import { buildCollectionBadgeState } from "../services/creators/public-creator.service.js";
 import { asyncHandler } from "../utils/async-handler.js";
 
 export const launchpadRouter = Router();
@@ -38,6 +39,16 @@ function currentPublicStatus(collection: any) {
   return "published";
 }
 
+async function withPublicBadges(collection: any) {
+  const creatorId = collection.creatorId ?? collection.owner;
+  const creator = creatorId
+    ? await User.findById(creatorId)
+      .select("displayName username avatarUrl walletAddress primaryWallet primaryWalletAddress currentPlan plan isVerifiedCreator creatorBadge")
+      .lean()
+    : undefined;
+  return { ...collection, ...buildCollectionBadgeState(collection, creator) };
+}
+
 launchpadRouter.get("/collections", asyncHandler(async (_req, res) => {
   const collections = await NFTCollection.find({
     status: { $in: ["published", "minting_live", "sold_out"] },
@@ -47,7 +58,7 @@ launchpadRouter.get("/collections", asyncHandler(async (_req, res) => {
     $or: [{ metadataBaseUri: { $type: "string" } }, { baseMetadataUri: { $type: "string" } }],
     publishFeeStatus: "verified"
   }).sort({ launchAt: -1, publicMintStartAt: 1 }).limit(100).lean();
-  res.json({ collections });
+  res.json({ collections: await Promise.all(collections.map(withPublicBadges)) });
 }));
 
 launchpadRouter.get("/collections/:slug", asyncHandler(async (req, res) => {
@@ -78,7 +89,7 @@ launchpadRouter.get("/collections/:slug", asyncHandler(async (req, res) => {
     ])
   ]);
   res.json({
-    collection: { ...collection, liveStatus: currentPublicStatus(collection) },
+    collection: { ...(await withPublicBadges(collection)), liveStatus: currentPublicStatus(collection) },
     campaign,
     items,
     recentMints,
@@ -97,6 +108,8 @@ launchpadRouter.post("/collections/:id/verify-mint", requireAuth, asyncHandler(a
   if (!collection) throw new AppError(404, "Collection not found");
   if (!collection.contractAddress || !collection.chainId) throw new AppError(400, "Collection contract missing");
   if (collection.chainId !== body.chainId) throw new AppError(400, "Mint chain mismatch");
+  const existingMint = await MintRecord.findOne({ chainId: body.chainId, txHash: body.txHash.toLowerCase(), status: "confirmed" }).lean();
+  if (existingMint) throw new AppError(409, "Mint transaction hash has already been processed");
 
   const receipt = await getReceipt(body.chainId, body.txHash);
   const tx = await getPublicClient(body.chainId).getTransaction({ hash: body.txHash });

@@ -75,10 +75,28 @@ const nftCollectionSchema = new Schema(
     metadataBaseIpfsUri: String,
     basePrompt: String,
     style: String,
+    generationImageWidth: Number,
+    generationImageHeight: Number,
     placeholderUri: String,
     unrevealedUri: String,
     coverImageUrl: String,
     coverImageIpfsUri: String,
+    profileImageUrl: String,
+    profileImageIpfsUri: String,
+    bannerImageUrl: String,
+    bannerImageIpfsUri: String,
+    websiteUrl: String,
+    twitterUrl: String,
+    discordUrl: String,
+    telegramUrl: String,
+    externalUrl: String,
+    creatorDisplayName: { type: String, trim: true },
+    creatorBio: String,
+    creatorAvatarUrl: String,
+    isVerifiedCollection: { type: Boolean, default: false, index: true },
+    verifiedCollectionAt: Date,
+    verifiedCollectionReason: String,
+    collectionBadge: { type: String, enum: ["none", "verified", "featured", "partner"], default: "none", index: true },
     revealMode: { type: String, enum: ["instant", "delayed", "placeholder"], default: "instant" },
     isRevealed: { type: Boolean, default: false },
     isPublicMintEnabled: { type: Boolean, default: false, index: true },
@@ -86,12 +104,17 @@ const nftCollectionSchema = new Schema(
     publicMintStartAt: Date,
     publicMintEndAt: Date,
     launchAt: Date,
+    publishedAt: Date,
     revealAt: Date,
     analytics: {
       revenueNative: { type: String, default: "0" },
       uniqueMinters: { type: Number, default: 0 },
       views: { type: Number, default: 0 }
-    }
+    },
+    likeCount: { type: Number, default: 0, min: 0, index: true },
+    viewCount: { type: Number, default: 0, min: 0, index: true },
+    trendingScore: { type: Number, default: 0, index: true },
+    lastTrendingCalculatedAt: Date
   },
   { timestamps: true }
 );
@@ -107,5 +130,8 @@ nftCollectionSchema.index(
 nftCollectionSchema.index({ owner: 1, chainId: 1 });
 nftCollectionSchema.index({ deploymentStatus: 1, chainId: 1 });
 nftCollectionSchema.index({ chainId: 1, status: 1 });
+nftCollectionSchema.index({ trendingScore: -1, updatedAt: -1 });
+nftCollectionSchema.index({ viewCount: -1 });
+nftCollectionSchema.index({ likeCount: -1 });
 
 export const NFTCollection = model("NFTCollection", nftCollectionSchema);

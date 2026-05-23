@@ -42,7 +42,11 @@ const nftItemSchema = new Schema(
       default: "draft",
       index: true
     },
-    ownerWallet: { type: String, lowercase: true, index: true }
+    ownerWallet: { type: String, lowercase: true, index: true },
+    likeCount: { type: Number, default: 0, min: 0, index: true },
+    viewCount: { type: Number, default: 0, min: 0, index: true },
+    trendingScore: { type: Number, default: 0, index: true },
+    lastTrendingCalculatedAt: Date
   },
   { timestamps: true, suppressReservedKeysWarning: true }
 );
@@ -55,5 +59,8 @@ nftItemSchema.index({ collectionId: 1, tokenNumber: 1 }, { unique: true, partial
 nftItemSchema.index({ collectionId: 1, traitHash: 1 }, { unique: true, partialFilterExpression: { traitHash: { $type: "string" } } });
 nftItemSchema.index({ collectionId: 1, rarityRank: 1 });
 nftItemSchema.index({ collectionId: 1, generationStatus: 1 });
+nftItemSchema.index({ collectionId: 1, likeCount: -1 });
+nftItemSchema.index({ collectionId: 1, trendingScore: -1 });
+nftItemSchema.index({ trendingScore: -1 });
 
 export const NFTItem = model("NFTItem", nftItemSchema);

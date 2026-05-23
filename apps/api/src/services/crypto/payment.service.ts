@@ -13,6 +13,10 @@ import { activateSubscriptionFromPayment } from "../subscription.service.js";
 import { addCredits } from "../credits/credit-ledger.service.js";
 import { recordPlatformRevenueFromPayment, recordReferralRewardForPayment } from "../revenue/revenue-split.service.js";
 
+// Production note:
+// Payment verification rules, abuse checks, and revenue operations should be
+// reviewed before mainnet and may belong in a private production module.
+
 export async function createCryptoPayment(input: {
   userId: string;
   walletAddress: string;
