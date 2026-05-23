@@ -5,19 +5,26 @@ export type AuthUser = {
   username?: string;
   email?: string;
   walletAddress?: string;
+  linkedWallets?: Array<{ address: string; chainId?: number; linkedAt: string; isPrimary: boolean }>;
+  walletLinkedAt?: string | null;
+  walletVerifiedAt?: string | null;
   role: "user" | "creator" | "admin";
   credits: number;
   paidCredits?: number;
   bonusCredits?: number;
-  plan?: "free" | "starter" | "pro" | "enterprise";
-  activePlan?: "free" | "starter" | "pro" | "enterprise";
+  plan?: "free" | "starter" | "creator" | "pro" | "enterprise";
+  activePlan?: "free" | "starter" | "creator" | "pro" | "enterprise";
   planSource?: "user" | "subscription";
   planLimits?: {
     generations?: number;
     maxCollectionSize?: number;
     maxCollectionSupply?: number;
+    maxImageSize?: number;
+    testnetOnly?: boolean;
     canPublishLaunchpad?: boolean;
     canDeployContract?: boolean;
+    marketplaceListingEnabled?: boolean;
+    includedLaunchpadPublishes?: number | null;
     priorityQueue?: boolean;
     launchEnabled?: boolean;
     deploymentEnabled?: boolean;

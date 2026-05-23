@@ -10,6 +10,7 @@ import { UserMenu } from "@/components/auth/UserMenu";
 
 const publicNav = [
   ["Launchpad", "/launchpad"],
+  ["Market", "/marketplace"],
   ["Studio", "/studio"],
   ["Collection Studio", "/studio/collection"],
   ["Pricing", "/pricing"],
@@ -17,26 +18,24 @@ const publicNav = [
 ];
 
 const authedNav = [
-  ["Dashboard", "/dashboard"],
-  ["Create", "/collections/create"],
-  ["Creator", "/dashboard/creator"],
-  ["Earn", "/earn"]
+  ["Dashboard", "/dashboard"]
 ];
 
 export function SiteHeader() {
   const user = useAuthStore((state) => state.user);
   const isLoading = useAuthStore((state) => state.isLoading);
   const nav = user ? [...publicNav, ...authedNav] : publicNav;
+  const navLabel = (label: string) => label === "Collection Studio" ? "Collection" : label;
   return (
     <>
       <header className="sticky top-0 z-50 border-b border-white/10 bg-[#050608]/85 backdrop-blur-xl">
         <div className="mx-auto max-w-7xl px-4">
-          <div className="flex min-h-16 items-center justify-between gap-3">
-            <Link href="/" className="w-40 shrink-0 text-lg font-black tracking-wide xl:w-44">NEXMINT AI</Link>
-            <nav className="hidden min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto whitespace-nowrap text-sm text-muted lg:flex">
+          <div className="flex min-h-16 items-center justify-between gap-4">
+            <Link href="/" className="shrink-0 text-lg font-black tracking-wide text-white transition hover:text-cyan">NEXMINT AI</Link>
+            <nav className="hidden min-w-0 flex-1 items-center justify-center gap-1 text-sm text-muted lg:flex">
               {nav.map(([label, href]) => (
-                <Link key={href} href={href} className="rounded-full px-3 py-2 transition hover:bg-white/5 hover:text-white">
-                  {label === "Collection Studio" ? "Collection" : label}
+                <Link key={href} href={href} className="rounded-full px-3 py-2 transition hover:bg-white/5 hover:text-white xl:px-4">
+                  {navLabel(label)}
                 </Link>
               ))}
             </nav>
@@ -50,19 +49,19 @@ export function SiteHeader() {
               )}
             </div>
           </div>
-          <div className="flex items-center justify-between gap-3 border-t border-white/5 py-3">
-            <div className="min-w-0 max-w-full flex-1 overflow-x-auto pr-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/5 py-3">
+            <div className="min-w-0 max-w-full flex-1">
               <NetworkModeSwitcher />
             </div>
-            <div className="hidden shrink-0 items-center rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-muted xl:flex">
+            <div className="hidden shrink-0 items-center rounded-full border border-cyan/15 bg-cyan/[0.06] px-3 py-2 text-xs font-medium text-muted xl:flex">
               AI Launchpad Testnet Mode
             </div>
           </div>
         </div>
-        <nav className="mx-auto flex max-w-7xl gap-2 overflow-x-auto border-t border-white/5 px-4 py-2 text-xs text-muted lg:hidden">
+        <nav className="mx-auto flex max-w-7xl flex-wrap gap-2 border-t border-white/5 px-4 py-2 text-xs text-muted lg:hidden">
           {nav.map(([label, href]) => (
-            <Link key={href} href={href} className="shrink-0 rounded-full border border-white/10 px-3 py-1 hover:border-cyan/40 hover:text-white">
-              {label === "Collection Studio" ? "Collection" : label}
+            <Link key={href} href={href} className="rounded-full border border-white/10 px-3 py-1 hover:border-cyan/40 hover:text-white">
+              {navLabel(label)}
             </Link>
           ))}
         </nav>

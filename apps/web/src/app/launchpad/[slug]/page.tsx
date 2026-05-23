@@ -1,13 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { Activity, BarChart3, Bot, CheckCircle2, Clock, Copy, Grid3X3, ShieldCheck, Sparkles, Tag } from "lucide-react";
+import { Activity, BarChart3, Bot, CheckCircle2, Clock, Copy, Grid3X3, Sparkles, Tag } from "lucide-react";
 import { formatEther, parseAbi } from "viem";
 import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { CreatorBadges } from "@/components/badges/CreatorBadges";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
+import { ExternalMarketplaceLinks } from "@/components/nft/ExternalMarketplaceLinks";
 import { ChainBadge } from "@/components/web3/ChainBadge";
 import { useNetworkMode } from "@/hooks/useNetworkMode";
 import { api } from "@/lib/api";
@@ -80,6 +83,15 @@ type Collection = {
   publicMintStartAt?: string;
   publicMintEndAt?: string;
   platformMintFeeBps?: number;
+  isVerifiedCollection?: boolean;
+  isVerifiedCreator?: boolean;
+  isProCreator?: boolean;
+  creatorProfile?: {
+    displayName?: string;
+    walletAddress?: string;
+    isVerifiedCreator?: boolean;
+    isProCreator?: boolean;
+  };
 };
 
 type LaunchpadResponse = {
@@ -122,6 +134,10 @@ async function copy(value?: string) {
   await navigator.clipboard.writeText(value);
 }
 
+function ipfsToGateway(ipfsUri?: string) {
+  return ipfsUri?.startsWith("ipfs://") ? `https://ipfs.io/ipfs/${ipfsUri.replace("ipfs://", "")}` : undefined;
+}
+
 export default function PublicMintPage() {
   const params = useParams<{ slug: string }>();
   const { address, chainId } = useAccount();
@@ -137,7 +153,9 @@ export default function PublicMintPage() {
   const [status, setStatus] = useState<string>();
   const [error, setError] = useState<string>();
   const [tokenIds, setTokenIds] = useState<string[]>([]);
+  const [mintTxHash, setMintTxHash] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   const { data: price, error: priceReadError } = useReadContract({
     address: collection?.contractAddress,
@@ -182,13 +200,18 @@ export default function PublicMintPage() {
       .finally(() => setIsLoading(false));
   }, [params.slug, setSelectedChainId]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setCurrentTime(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const maxSupply = typeof contractMaxSupply === "bigint" ? Number(contractMaxSupply) : collection?.maxSupply ?? 0;
   const minted = typeof totalSupply === "bigint" ? Number(totalSupply) : collection?.totalMinted ?? 0;
   const remaining = Math.max(maxSupply - minted, 0);
   const progress = maxSupply ? Math.min((minted / maxSupply) * 100, 100) : 0;
   const heroImage = collection?.coverImageUrl ?? items.find((item) => item.imageUrl)?.imageUrl;
   const previewItems = useMemo(() => items.filter((item) => item.imageUrl).slice(0, 5), [items]);
-  const now = Date.now();
+  const now = currentTime;
   const started = !collection?.publicMintStartAt || new Date(collection.publicMintStartAt).getTime() <= now;
   const ended = Boolean(collection?.publicMintEndAt && new Date(collection.publicMintEndAt).getTime() < now);
   const soldOut = collection ? minted >= maxSupply : false;
@@ -238,11 +261,12 @@ export default function PublicMintPage() {
         value: mintValue
       });
       setStatus("Verifying public mint...");
-      const verified = await withMinimumDelay(api<{ tokenIds: string[]; totalMinted: number; explorerUrl: string }>(`/api/launchpad/collections/${collection._id}/verify-mint`, {
+      const verified = await withMinimumDelay(api<{ tokenIds: string[]; totalMinted: number; txHash: string; explorerUrl: string }>(`/api/launchpad/collections/${collection._id}/verify-mint`, {
         method: "POST",
         body: JSON.stringify({ chainId: collection.chainId, txHash, minterWallet: address })
       }));
       setTokenIds(verified.tokenIds);
+      setMintTxHash(verified.txHash ?? txHash);
       setCollection((current) => current ? { ...current, totalMinted: verified.totalMinted } : current);
       setRecentMints((current) => [{
         _id: txHash,
@@ -284,12 +308,22 @@ export default function PublicMintPage() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <h1 className="text-4xl font-black tracking-tight md:text-5xl">{collection.name}</h1>
-                      <ShieldCheck className="text-cyan" size={24} />
+                      <CreatorBadges
+                        size="md"
+                        isVerifiedCollection={collection.isVerifiedCollection}
+                        isVerifiedCreator={collection.isVerifiedCreator ?? collection.creatorProfile?.isVerifiedCreator}
+                        isProCreator={collection.isProCreator ?? collection.creatorProfile?.isProCreator}
+                      />
                       <span className="rounded-full border border-lime/30 bg-lime/10 px-3 py-1 text-xs font-black uppercase text-lime">AI Generated</span>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted">
                       {collection.symbol && <span>{collection.symbol}</span>}
-                      {collection.creatorWallet && <span>by {short(collection.creatorWallet)}</span>}
+                      {(collection.creatorWallet || collection.creatorProfile) && (
+                        <span className="inline-flex items-center gap-1.5">
+                          by {collection.creatorProfile?.displayName ?? short(collection.creatorProfile?.walletAddress ?? collection.creatorWallet)}
+                          <CreatorBadges isVerifiedCreator={collection.isVerifiedCreator ?? collection.creatorProfile?.isVerifiedCreator} isProCreator={collection.isProCreator ?? collection.creatorProfile?.isProCreator} />
+                        </span>
+                      )}
                       <ChainBadge chainId={collection.chainId} compact />
                       {contractUrl && <a className="text-cyan hover:underline" href={contractUrl} target="_blank" rel="noreferrer">Contract</a>}
                       <button className="inline-flex items-center gap-1 text-cyan" onClick={() => void copy(collection.contractAddress)}><Copy size={14} /> Copy</button>
@@ -343,6 +377,15 @@ export default function PublicMintPage() {
                   <div className="h-3 overflow-hidden rounded-full bg-white/10"><div className="h-full bg-cyan" style={{ width: `${progress}%` }} /></div>
                   <div className="flex justify-between text-xs text-muted"><span>Available items</span><span>{remaining.toLocaleString()}</span></div>
 
+                  <SciFiCountdown
+                    startAt={collection.publicMintStartAt}
+                    endAt={collection.publicMintEndAt}
+                    now={now}
+                    soldOut={soldOut}
+                    ended={ended}
+                    started={started}
+                  />
+
                   <div className="rounded-xl border border-white/10 bg-panel p-5">
                     <div className="flex flex-wrap items-center justify-between gap-4">
                       <div>
@@ -359,6 +402,19 @@ export default function PublicMintPage() {
                     {priceReadError && <p className="mt-4 rounded-md border border-rose/30 bg-rose/10 p-3 text-rose">Mint price unavailable: {getReadableMintError(priceReadError)}</p>}
                     {status && <p className="mt-4 rounded-md border border-lime/30 bg-lime/10 p-3 text-lime">{status}</p>}
                     {tokenIds.length ? <p className="mt-4 rounded-md bg-white/5 p-3 text-sm">Minted token IDs: {tokenIds.join(", ")}</p> : null}
+                    {tokenIds.length ? (
+                      <div className="mt-4 grid gap-3">
+                        {tokenIds.map((tokenId) => (
+                          <ExternalMarketplaceLinks
+                            key={tokenId}
+                            chainId={collection.chainId}
+                            contractAddress={collection.contractAddress}
+                            tokenId={tokenId}
+                            txHash={mintTxHash}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="rounded-xl border border-white/10 bg-panel p-5">
@@ -369,7 +425,7 @@ export default function PublicMintPage() {
               </div>
             )}
 
-            {activeTab === "items" && <ItemsGrid items={items} />}
+            {activeTab === "items" && <ItemsGrid items={items} collection={collection} />}
             {activeTab === "traits" && <TraitsPanel traits={traitSummary} total={items.length || maxSupply} />}
             {activeTab === "activity" && <ActivityPanel mints={recentMints} chainId={collection.chainId} />}
             {activeTab === "analytics" && <AnalyticsPanel minted={minted} maxSupply={maxSupply} mints={recentMints} collection={collection} />}
@@ -404,22 +460,123 @@ function ScheduleRow({ title, start, end, eligible }: { title: string; start?: s
   );
 }
 
-function ItemsGrid({ items }: { items: CollectionItem[] }) {
+function SciFiCountdown({
+  startAt,
+  endAt,
+  now,
+  soldOut,
+  ended,
+  started
+}: {
+  startAt?: string;
+  endAt?: string;
+  now: number;
+  soldOut: boolean;
+  ended: boolean;
+  started: boolean;
+}) {
+  const startMs = startAt ? new Date(startAt).getTime() : undefined;
+  const endMs = endAt ? new Date(endAt).getTime() : undefined;
+  const targetMs = !started && startMs ? startMs : started && endMs && !ended ? endMs : undefined;
+  const remainingMs = targetMs ? Math.max(targetMs - now, 0) : 0;
+  const seconds = Math.floor(remainingMs / 1000);
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  const label = soldOut
+    ? "DROP SOLD OUT"
+    : ended
+      ? "MINT WINDOW CLOSED"
+      : !started
+        ? "MINT STARTS IN"
+        : targetMs
+          ? "MINT ENDS IN"
+          : "PUBLIC MINT LIVE";
+  const subcopy = !started && startAt
+    ? `Starts ${dateLabel(startAt)}`
+    : started && endAt && !ended
+      ? `Ends ${dateLabel(endAt)}`
+      : started && !endAt && !soldOut
+        ? "Open ended public mint"
+        : "Check collection status before minting";
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-cyan/20 bg-[linear-gradient(135deg,rgba(0,229,255,0.10),rgba(8,11,18,0.92)_48%,rgba(132,255,80,0.08))] p-5 shadow-[0_0_45px_rgba(0,229,255,0.08)]">
+      <div className="pointer-events-none absolute inset-0 opacity-[0.09]" style={{ backgroundImage: "linear-gradient(rgba(255,255,255,.18) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.18) 1px, transparent 1px)", backgroundSize: "26px 26px" }} />
+      <div className="pointer-events-none absolute -right-24 -top-24 h-48 w-48 rounded-full bg-cyan/20 blur-3xl" />
+      <div className="relative flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-cyan">NEXMINT Chrono Core</p>
+          <h3 className="mt-2 text-xl font-black">{label}</h3>
+          <p className="mt-1 text-sm text-muted">{subcopy}</p>
+        </div>
+        <div className="grid grid-cols-4 gap-2">
+          <ChronoCell label="Days" value={days} active={Boolean(targetMs)} />
+          <ChronoCell label="Hours" value={hours} active={Boolean(targetMs)} />
+          <ChronoCell label="Mins" value={minutes} active={Boolean(targetMs)} />
+          <ChronoCell label="Secs" value={secs} active={Boolean(targetMs)} pulse />
+        </div>
+      </div>
+      <div className="relative mt-4 h-1.5 overflow-hidden rounded-full bg-white/10">
+        <div className={`h-full rounded-full ${started && !ended && !soldOut ? "bg-gradient-to-r from-lime via-cyan to-blue-500" : "bg-gradient-to-r from-cyan via-blue-500 to-violet-500"}`} style={{ width: targetMs ? `${Math.max(3, Math.min((1 - remainingMs / Math.max((targetMs - (startMs ?? now)), 1)) * 100, 100))}%` : started && !ended && !soldOut ? "100%" : "18%" }} />
+      </div>
+    </div>
+  );
+}
+
+function ChronoCell({ label, value, active, pulse }: { label: string; value: number; active: boolean; pulse?: boolean }) {
+  return (
+    <div className={`min-w-16 rounded-xl border px-3 py-2 text-center ${active ? "border-cyan/30 bg-black/45 shadow-[inset_0_0_18px_rgba(0,229,255,0.08)]" : "border-white/10 bg-black/30 opacity-70"}`}>
+      <p className={`font-mono text-2xl font-black tabular-nums text-white ${pulse && active ? "animate-pulse" : ""}`}>{String(value).padStart(2, "0")}</p>
+      <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-cyan/80">{label}</p>
+    </div>
+  );
+}
+
+function ItemsGrid({ items, collection }: { items: CollectionItem[]; collection: Collection }) {
   if (!items.length) return <EmptyPanel message="No generated items are available yet." />;
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
-      {items.map((item) => (
-        <div key={item._id} className="overflow-hidden rounded-xl border border-white/10 bg-panel">
-          <div className="aspect-square bg-black/40">{item.imageUrl ? <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" /> : null}</div>
-          <div className="p-3">
-            <div className="flex items-center justify-between gap-2">
-              <p className="font-bold">#{item.tokenNumber ?? "?"}</p>
-              <span className="rounded-full border border-cyan/20 px-2 py-0.5 text-[10px] uppercase text-cyan">{item.rarityTier ?? "NFT"}</span>
+      {items.map((item) => {
+        const image = item.imageUrl ?? ipfsToGateway(item.imageIpfsUri);
+        const isMinted = item.minted || item.mintStatus === "minted";
+        const marketplaceHref = isMinted && item.tokenId && collection.contractAddress
+          ? `/marketplace/assets/${collection.chainId}/${collection.contractAddress}/${item.tokenId}`
+          : undefined;
+        return (
+          <div key={item._id} className="group overflow-hidden rounded-xl border border-white/10 bg-panel transition hover:border-cyan/40">
+            <Link href={`/nft/${item._id}`} className="block">
+              <div className="aspect-square bg-black/40">
+                {image ? <img src={image} alt={item.name} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" /> : null}
+              </div>
+            </Link>
+            <div className="p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="truncate font-bold">{item.name || `#${item.tokenNumber ?? "?"}`}</p>
+                <span className="rounded-full border border-cyan/20 px-2 py-0.5 text-[10px] uppercase text-cyan">{item.rarityTier ?? "NFT"}</span>
+              </div>
+              <p className="mt-1 truncate text-xs text-muted">
+                #{item.tokenNumber ?? "?"} · {isMinted ? `Token ${item.tokenId ?? "?"}` : item.generationStatus ?? "ready"}
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <Link href={`/nft/${item._id}`} className="rounded-md border border-cyan/30 px-2 py-2 text-center text-xs font-bold text-cyan hover:bg-cyan/10">
+                  View NFT
+                </Link>
+                {marketplaceHref ? (
+                  <Link href={marketplaceHref} className="rounded-md border border-lime/30 px-2 py-2 text-center text-xs font-bold text-lime hover:bg-lime/10">
+                    Trade
+                  </Link>
+                ) : (
+                  <button disabled className="rounded-md border border-white/10 px-2 py-2 text-xs font-bold text-muted opacity-50">
+                    Not minted
+                  </button>
+                )}
+              </div>
             </div>
-            <p className="mt-1 truncate text-xs text-muted">{item.mintStatus ?? item.generationStatus ?? "ready"}</p>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

@@ -10,10 +10,13 @@ import { AuthGuard } from "@/components/auth/AuthGuard";
 import { Button } from "@/components/ui/button";
 import { NetworkStatusCard } from "@/components/web3/NetworkStatusCard";
 import { GenerationProgressCard } from "@/components/generation/GenerationProgressCard";
+import { ExternalMarketplaceLinks } from "@/components/nft/ExternalMarketplaceLinks";
 import { useNetworkMode } from "@/hooks/useNetworkMode";
 import { api } from "@/lib/api";
 import { withMinimumDelay } from "@/lib/loading";
-
+import { getContractAddress } from "@/lib/web3/contract-addresses";
+import { getChainById, getChainMetadata } from "@/config/chains";
+import DominoEffect from "../../components/loaders/DominoEffect";
 type ProviderInfo = {
   name: string;
   capabilities: string[];
@@ -48,8 +51,15 @@ type PreparedNft = {
     description: string;
     contractAddress?: `0x${string}`;
     attributes: Array<{ trait_type: string; value: string | number }>;
+    metadata?: unknown;
   };
 };
+
+type SingleNftMintMethod =
+  | "default_nexmint_contract"
+  | "export_metadata"
+  | "custom_contract_coming_soon"
+  | "deploy_new_contract_coming_soon";
 
 const mintAbi = parseAbi([
   "function mintTo(address to,string uri) payable returns (uint256)",
@@ -65,24 +75,48 @@ function getReadableMintError(error: unknown) {
   return "Mint failed";
 }
 
+function ipfsToGateway(ipfsUri?: string) {
+  if (!ipfsUri?.startsWith("ipfs://")) return undefined;
+  return `https://ipfs.filebase.io/ipfs/${ipfsUri.replace("ipfs://", "").replace(/^\/+/, "")}`;
+}
+
+async function copyText(value?: string) {
+  if (!value || typeof navigator === "undefined") return;
+  await navigator.clipboard.writeText(value);
+}
+
+function downloadJson(filename: string, data: unknown) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function StudioPage() {
   const { address, chainId } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const { writeContractAsync, isPending: isMintPending } = useWriteContract();
   const { selectedChainId, isWrongNetwork, switchToSelectedChain } = useNetworkMode();
   const publicClient = usePublicClient({ chainId: selectedChainId });
-  const [singleMintContractInput, setSingleMintContractInput] = useState("");
+  const [mintMethod, setMintMethod] = useState<SingleNftMintMethod>("default_nexmint_contract");
+  const [recipient, setRecipient] = useState("");
   const [prompt, setPrompt] = useState("Cyberpunk cat with chrome whiskers and a neon kimono");
   const [enhancedPrompt, setEnhancedPrompt] = useState("");
   const [negativePrompt, setNegativePrompt] = useState("");
   const [textProvider, setTextProvider] = useState("openrouter");
   const [imageProvider, setImageProvider] = useState("replicate");
   const [model, setModel] = useState("black-forest-labs/flux-schnell");
+  const [imageSize, setImageSize] = useState<512 | 768 | 1024>(768);
   const [status, setStatus] = useState("Idle");
   const [generationId, setGenerationId] = useState<string>();
   const [generation, setGeneration] = useState<GenerationStatus>();
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [usedFallback, setUsedFallback] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+  
   const [nftName, setNftName] = useState("Cyberpunk Cat #1");
   const [nftDescription, setNftDescription] = useState("AI generated NFT from NEXMINT AI");
   const [traits, setTraits] = useState<Array<{ trait_type: string; value: string }>>([
@@ -90,15 +124,19 @@ export default function StudioPage() {
     { trait_type: "Origin", value: "NEXMINT AI" }
   ]);
   const [preparedNft, setPreparedNft] = useState<PreparedNft>();
-  const [mintResult, setMintResult] = useState<{ tokenId: string; txHash: string; explorerUrl: string }>();
+  const [mintResult, setMintResult] = useState<{ tokenId: string; txHash: string; explorerUrl: string; chainId: number; contractAddress: string }>();
   const [actionLoading, setActionLoading] = useState(false);
   const [mintError, setMintError] = useState<string>();
   const [mintPriceError, setMintPriceError] = useState<string>();
-  const mintContractAddress = (preparedNft?.nftItem.contractAddress && isAddress(preparedNft.nftItem.contractAddress)
-    ? preparedNft.nftItem.contractAddress
-    : isAddress(singleMintContractInput)
-      ? singleMintContractInput
-      : undefined) as `0x${string}` | undefined;
+  const defaultMintContract = getContractAddress(selectedChainId, "singleNftMinter") as `0x${string}` | undefined;
+  const mintContractAddress = mintMethod === "default_nexmint_contract" && defaultMintContract && isAddress(defaultMintContract)
+    ? defaultMintContract
+    : undefined;
+  const selectedChain = getChainById(selectedChainId);
+  const selectedChainMetadata = getChainMetadata(selectedChainId);
+  const imageCreditCost = imageSize === 512 ? 1 : imageSize === 768 ? 2 : 4;
+  const generationCreditEstimate = imageCreditCost + 0.25;
+  const preparationCreditEstimate = 0.25;
   const { data: publicPrice, error: publicPriceReadError } = useReadContract({
     address: mintContractAddress,
     abi: mintAbi,
@@ -106,6 +144,10 @@ export default function StudioPage() {
     chainId: selectedChainId,
     query: { enabled: Boolean(mintContractAddress) }
   });
+
+  useEffect(() => {
+    if (address && !recipient) setRecipient(address);
+  }, [address, recipient]);
   const { data: paused } = useReadContract({
     address: mintContractAddress,
     abi: mintAbi,
@@ -132,11 +174,30 @@ export default function StudioPage() {
     return session.token;
   }
 
-  useEffect(() => {
-    api<{ providers: ProviderInfo[] }>("/api/ai/providers")
-      .then((result) => setProviders(result.providers))
-      .catch(() => setProviders([]));
-  }, []);
+useEffect(() => {
+  async function bootstrap() {
+    try {
+      setIsLoading(true);
+
+      await Promise.all([
+        api<{ providers: ProviderInfo[] }>("/api/ai/providers"),
+      ]).then(([providerResult]) => {
+        setProviders(providerResult.providers);
+      });
+
+    } catch {
+      setProviders([]);
+    } finally {
+      setTimeout(() => {
+        setIsLoading(false);
+      }, 1800);
+    }
+  }
+
+  bootstrap();
+}, []);
+
+
 
   useEffect(() => {
     setMintPriceError(publicPriceReadError ? getReadableMintError(publicPriceReadError) : undefined);
@@ -199,8 +260,8 @@ export default function StudioPage() {
           negativePrompt,
           provider: imageProvider,
           model: model || undefined,
-          width: 1024,
-          height: 1024
+          width: imageSize,
+          height: imageSize
         })
       }));
       setGenerationId(result.generationId);
@@ -245,10 +306,15 @@ export default function StudioPage() {
       setActionLoading(true);
       setMintError(undefined);
       await ensureWalletSession();
+      if (mintMethod !== "default_nexmint_contract") {
+        if (mintMethod === "export_metadata") throw new Error("Export metadata mode does not mint on-chain.");
+        throw new Error("This mint method is coming soon.");
+      }
       if (!address) throw new Error("Connect wallet first");
       if (!preparedNft?.metadataIpfsUri) throw new Error("Prepare NFT metadata first");
       const contractAddress = mintContractAddress;
-      if (!contractAddress) throw new Error("Select a single NFT minter contract. Studio mint never uses the NFT factory.");
+      if (!contractAddress) throw new Error("No default single NFT contract is configured for this network.");
+      if (!recipient || !isAddress(recipient)) throw new Error("Enter a valid recipient wallet address.");
       if (paused) throw new Error("Collection contract is paused.");
       if (chainId !== selectedChainId || isWrongNetwork) {
         setStatus("Switching network");
@@ -265,7 +331,7 @@ export default function StudioPage() {
           address: contractAddress,
           abi: mintAbi,
           functionName: "mintTo",
-          args: [address, preparedNft.metadataIpfsUri],
+          args: [recipient as `0x${string}`, preparedNft.metadataIpfsUri],
           value: mintValue
         });
       } catch (error) {
@@ -277,22 +343,23 @@ export default function StudioPage() {
         address: contractAddress,
         abi: mintAbi,
         functionName: "mintTo",
-        args: [address, preparedNft.metadataIpfsUri],
+        args: [recipient as `0x${string}`, preparedNft.metadataIpfsUri],
         value: mintValue
       });
       setStatus("Verifying mint transaction");
       setGeneration((current) => current ? { ...current, status: "verifying_mint", progress: 99 } : current);
-      const verified = await withMinimumDelay(api<{ status: "minted"; tokenId: string; txHash: string; explorerUrl: string }>("/api/nft/verify-mint", {
+      const verified = await withMinimumDelay(api<{ status: "minted"; tokenId: string; txHash: string; explorerUrl: string; chainId: number; contractAddress: string }>("/api/nft/verify-mint", {
         method: "POST",
         body: JSON.stringify({
           nftItemId: preparedNft.nftItemId,
           chainId: selectedChainId,
-          contractAddress,
+          mintMethod: "default_nexmint_contract",
+          recipient,
           txHash,
           mintValue: mintValue.toString()
         })
       }));
-      setMintResult({ tokenId: verified.tokenId, txHash: verified.txHash, explorerUrl: verified.explorerUrl });
+      setMintResult({ tokenId: verified.tokenId, txHash: verified.txHash, explorerUrl: verified.explorerUrl, chainId: verified.chainId, contractAddress: verified.contractAddress });
       setGeneration((current) => current ? { ...current, status: "minted", progress: 100 } : current);
       setStatus("NFT Minted");
     } catch (error) {
@@ -301,9 +368,33 @@ export default function StudioPage() {
       setStatus(message);
     } finally {
       setActionLoading(false);
+      setIsLoading(false);
     }
   }
 
+  const previewImageUrl = generation?.imageUrl?.startsWith("http")
+    ? generation.imageUrl
+    : ipfsToGateway(generation?.imageIpfsUri);
+  const canUseDefaultMint = Boolean(
+    preparedNft?.imageIpfsUri &&
+    preparedNft?.metadataIpfsUri &&
+    mintContractAddress &&
+    recipient &&
+    isAddress(recipient) &&
+    address &&
+    chainId === selectedChainId &&
+    selectedChain &&
+    typeof publicPrice === "bigint" &&
+    !paused
+  );
+
+if (isLoading) {
+  return (
+    <main className="h-screen overflow-hidden bg-black">
+      <DominoEffect />
+    </main>
+  );
+}
   return (
     <main className="min-h-screen bg-background">
       <SiteHeader />
@@ -355,6 +446,23 @@ export default function StudioPage() {
                 </select>
                 <label className="block text-sm text-muted">Model</label>
                 <input className="w-full rounded-md bg-black/40 p-3" value={model} onChange={(e) => setModel(e.target.value)} />
+                <label className="block text-sm text-muted">Image size</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {([512, 768, 1024] as const).map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      className={`rounded-md border px-3 py-2 text-sm ${imageSize === option ? "border-cyan bg-cyan/10 text-cyan" : "border-white/10 text-muted"}`}
+                      onClick={() => setImageSize(option)}
+                    >
+                      {option}px
+                    </button>
+                  ))}
+                </div>
+                <div className="rounded-md border border-cyan/20 bg-cyan/10 p-3 text-xs text-cyan">
+                  <p>Generation estimate: {generationCreditEstimate} credits ({imageSize}px image + prompt enhancement).</p>
+                  <p>Prepare metadata estimate: {preparationCreditEstimate} credit for IPFS image upload. Metadata upload is included.</p>
+                </div>
               </div>
               <Button className="mt-4 w-full" disabled={actionLoading} onClick={generate}>{actionLoading && status === "Queueing generation" ? "Queueing..." : "Generate NFT"}</Button>
             </div>
@@ -365,7 +473,7 @@ export default function StudioPage() {
 
             <div className="grid gap-4 md:grid-cols-[1fr_280px]">
               <div className="flex aspect-square items-center justify-center rounded-lg border border-white/10 bg-[linear-gradient(135deg,#172554,#0f172a_55%,#14532d)]">
-                {generation?.imageUrl ? <img src={generation.imageUrl} alt="Generated NFT" className="h-full w-full rounded-lg object-cover" /> : <ImageIcon className="text-cyan" size={64} />}
+                {previewImageUrl ? <img src={previewImageUrl} alt="Generated NFT" className="h-full w-full rounded-lg object-cover" /> : <ImageIcon className="text-cyan" size={64} />}
               </div>
               <div className="rounded-lg border border-white/10 bg-panel p-5">
                 <h3 className="font-bold">Availability</h3>
@@ -417,23 +525,55 @@ export default function StudioPage() {
                 </div>
 
                 <div className="mt-5 grid gap-3 text-sm">
-                  <label className="block text-sm text-muted">
-                    Single NFT minter contract
-                    <input
-                      className="mt-2 w-full rounded-md border border-white/10 bg-black/40 p-3 text-white"
-                      placeholder="0x... contract with mintTo(address,string)"
-                      value={singleMintContractInput}
-                      onChange={(event) => setSingleMintContractInput(event.target.value)}
-                    />
-                    <span className="mt-1 block text-xs text-muted">Do not paste the factory address. Use a collection/minter contract that supports public tokenURI minting.</span>
-                  </label>
+                  <div>
+                    <p className="mb-2 text-sm font-semibold">Mint Method</p>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <MintMethodCard active={mintMethod === "default_nexmint_contract"} title="Mint with NEXMINT default contract" description="Use the preconfigured single NFT contract for the selected chain." onClick={() => setMintMethod("default_nexmint_contract")} />
+                      <MintMethodCard active={mintMethod === "export_metadata"} title="Export metadata only" description="Copy or download the IPFS metadata and mint elsewhere." onClick={() => setMintMethod("export_metadata")} />
+                      <MintMethodCard disabled title="Use my own NFT contract" description="Coming soon: mint to your own ERC721 contract that supports mintTo(address,string)." />
+                      <MintMethodCard disabled title="Deploy new NFT contract with NEXMINT" description="Coming soon: deploy your own ERC721 contract from NEXMINT." />
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-cyan/20 bg-cyan/10 p-3 text-cyan">
+                    <p>Single NFT metadata is a single token URI, not a collection baseURI.</p>
+                    <p className="mt-1">Single NFT minting uses metadata URI directly, like <span className="font-mono">ipfs://CID</span>.</p>
+                    <p className="mt-1">Collection launchpad uses <span className="font-mono">ipfs://CID/</span> and tokenURI(1) = <span className="font-mono">ipfs://CID/1.json</span>.</p>
+                  </div>
                   {preparedNft?.imageIpfsUri && <p className="break-all rounded-md bg-white/5 p-3"><span className="text-muted">Image IPFS:</span> {preparedNft.imageIpfsUri}</p>}
                   {preparedNft?.metadataIpfsUri && <p className="break-all rounded-md bg-white/5 p-3"><span className="text-muted">Metadata IPFS:</span> {preparedNft.metadataIpfsUri}</p>}
-                  {mintContractAddress && <p className="break-all rounded-md bg-white/5 p-3"><span className="text-muted">Mint contract:</span> {mintContractAddress}</p>}
-                  <p className="rounded-md bg-white/5 p-3">
-                    <span className="text-muted">Mint price:</span> {typeof publicPrice === "bigint" ? `${formatEther(publicPrice)} ETH` : mintContractAddress ? "Mint price unavailable" : "Select minter contract"}
-                    {paused ? <span className="ml-2 text-rose">Contract paused</span> : null}
-                  </p>
+                  {mintMethod === "default_nexmint_contract" && (
+                    <>
+                      <p className="break-all rounded-md bg-white/5 p-3"><span className="text-muted">Selected chain:</span> {selectedChainMetadata?.label ?? selectedChainId}</p>
+                      <p className="break-all rounded-md bg-white/5 p-3"><span className="text-muted">NEXMINT default contract:</span> {mintContractAddress ?? "No default single NFT contract is configured for this network."}</p>
+                      <label className="block text-sm text-muted">
+                        Recipient wallet
+                        <input
+                          className="mt-2 w-full rounded-md border border-white/10 bg-black/40 p-3 text-white"
+                          value={recipient}
+                          onChange={(event) => setRecipient(event.target.value)}
+                          placeholder="0x..."
+                        />
+                      </label>
+                      <p className="break-all rounded-md bg-white/5 p-3"><span className="text-muted">Token URI preview:</span> {preparedNft?.metadataIpfsUri ?? "Prepare metadata first"}</p>
+                      <p className="rounded-md bg-white/5 p-3">
+                        <span className="text-muted">Mint price:</span> {typeof publicPrice === "bigint" ? `${formatEther(publicPrice)} ETH` : mintContractAddress ? "Mint price unavailable" : "Default contract missing"}
+                        {paused ? <span className="ml-2 text-rose">Contract paused</span> : null}
+                      </p>
+                      <p className="rounded-md border border-white/10 bg-white/[0.03] p-3 text-muted">This will mint your NFT using the default NEXMINT single NFT contract for this network. No custom contract address is required.</p>
+                    </>
+                  )}
+                  {mintMethod === "export_metadata" && (
+                    <div className="rounded-md border border-lime/20 bg-lime/10 p-3 text-lime">
+                      <p className="font-semibold">Export metadata only</p>
+                      <p className="mt-1 text-sm">Use this if you want to mint outside NEXMINT using another platform or your own contract.</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button className="rounded-md border border-lime/30 px-3 py-2 text-xs" onClick={() => void copyText(preparedNft?.imageIpfsUri)}>Copy Image URI</button>
+                        <button className="rounded-md border border-lime/30 px-3 py-2 text-xs" onClick={() => void copyText(preparedNft?.metadataIpfsUri)}>Copy Metadata URI</button>
+                        <button className="rounded-md border border-lime/30 px-3 py-2 text-xs" onClick={() => void copyText(preparedNft?.metadataGatewayUrl)}>Copy Metadata Gateway</button>
+                        <button className="rounded-md border border-lime/30 px-3 py-2 text-xs" disabled={!preparedNft?.nftItem.metadata} onClick={() => preparedNft?.nftItem.metadata && downloadJson(`${nftName || "nexmint-nft"}.json`, preparedNft.nftItem.metadata)}>Download Metadata JSON</button>
+                      </div>
+                    </div>
+                  )}
                   {mintPriceError && <p className="rounded-md border border-rose/30 bg-rose/10 p-3 text-rose">Mint price unavailable: {mintPriceError}</p>}
                   {mintError && <p className="rounded-md border border-rose/30 bg-rose/10 p-3 text-rose">{mintError}</p>}
                   {process.env.NODE_ENV === "development" && (
@@ -441,6 +581,8 @@ export default function StudioPage() {
                       <p>selectedChainId: {selectedChainId}</p>
                       <p>walletChainId: {chainId ?? "disconnected"}</p>
                       <p>contractAddress: {mintContractAddress ?? "none"}</p>
+                      <p>mintMethod: {mintMethod}</p>
+                      <p>recipient: {recipient || "none"}</p>
                       <p>mintFunction: mintTo(address,string)</p>
                       <p>mintPrice: {typeof publicPrice === "bigint" ? publicPrice.toString() : "unavailable"}</p>
                       <p>mintValue: {typeof publicPrice === "bigint" ? publicPrice.toString() : "unavailable"}</p>
@@ -452,12 +594,19 @@ export default function StudioPage() {
 
                 <div className="mt-5 flex flex-wrap gap-3">
                   <Button onClick={prepareNft} disabled={actionLoading || !generation?.imageUrl || Boolean(preparedNft)}>{actionLoading && status === "Uploading image to IPFS" ? "Preparing..." : "Prepare NFT Metadata"}</Button>
-                  <Button onClick={mintNft} disabled={actionLoading || !preparedNft || !mintContractAddress || typeof publicPrice !== "bigint" || Boolean(paused) || isMintPending || Boolean(mintResult)}>
+                  <Button onClick={mintNft} disabled={actionLoading || mintMethod !== "default_nexmint_contract" || !canUseDefaultMint || isMintPending || Boolean(mintResult)}>
                     {isMintPending || (actionLoading && ["Minting", "Verifying mint transaction"].includes(status)) ? "Minting..." : "Mint NFT"}
                   </Button>
-                  {mintResult && <a className="rounded-md border border-cyan/40 px-4 py-2 text-sm font-semibold text-cyan hover:bg-cyan/10" href={mintResult.explorerUrl} target="_blank" rel="noreferrer">View Transaction</a>}
                   {mintResult && preparedNft?.nftItemId && <Link className="rounded-md border border-lime/40 px-4 py-2 text-sm font-semibold text-lime hover:bg-lime/10" href={`/nft/${preparedNft.nftItemId}`}>View NFT Result</Link>}
                 </div>
+                {mintResult && (
+                  <ExternalMarketplaceLinks
+                    chainId={mintResult.chainId}
+                    contractAddress={mintResult.contractAddress}
+                    tokenId={mintResult.tokenId}
+                    txHash={mintResult.txHash}
+                  />
+                )}
               </div>
             )}
           </div>
@@ -484,4 +633,37 @@ function labelForStatus(status: string) {
     failed: "Failed"
   };
   return labels[status] ?? status;
+}
+
+function MintMethodCard({
+  title,
+  description,
+  active,
+  disabled,
+  onClick
+}: {
+  title: string;
+  description: string;
+  active?: boolean;
+  disabled?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`rounded-lg border p-3 text-left transition ${
+        active
+          ? "border-cyan bg-cyan/10 text-white"
+          : disabled
+            ? "cursor-not-allowed border-white/10 bg-white/[0.02] text-muted opacity-60"
+            : "border-white/10 bg-white/[0.03] text-white hover:border-cyan/40"
+      }`}
+    >
+      <span className="font-semibold">{title}</span>
+      {disabled ? <span className="ml-2 rounded-full border border-yellow-300/30 px-2 py-0.5 text-[10px] uppercase text-yellow-100">Coming Soon</span> : null}
+      <p className="mt-1 text-xs text-muted">{description}</p>
+    </button>
+  );
 }

@@ -10,6 +10,10 @@ const treasuryOwnerAbi = parseAbi([
   "function treasury() view returns (address)"
 ]);
 
+// Production note:
+// Treasury access policy and withdrawal operations should remain private and
+// require operational review, multisig controls, and monitored admin actions.
+
 function normalizeAddress(value?: string | null) {
   return value && isAddress(value) ? getAddress(value).toLowerCase() : undefined;
 }

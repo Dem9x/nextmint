@@ -1,4 +1,4 @@
-export const MIN_LOADING_MS = 10000;
+export const MIN_LOADING_MS = 5000;
 
 export async function withMinimumDelay<T>(work: Promise<T>, minimumMs = MIN_LOADING_MS) {
   const [result] = await Promise.all([

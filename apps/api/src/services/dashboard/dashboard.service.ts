@@ -6,6 +6,7 @@ import { CreatorEarning } from "../../models/CreatorEarning.js";
 import { CreatorPayout } from "../../models/CreatorPayout.js";
 import { CryptoTransaction } from "../../models/CryptoTransaction.js";
 import { Generation } from "../../models/Generation.js";
+import { MarketplaceListing } from "../../models/MarketplaceListing.js";
 import { Mint } from "../../models/Mint.js";
 import { MintRecord } from "../../models/MintRecord.js";
 import { NFTCollection } from "../../models/NFTCollection.js";
@@ -62,29 +63,46 @@ export async function userSummary(userId: string) {
 
 export async function creatorSummary(userId: string) {
   const id = objectId(userId);
-  const [collections, earnings, mints, topCollections] = await Promise.all([
+  const [creator, collections, earnings, recentEarnings, mints, topCollections, payoutStats] = await Promise.all([
+    User.findById(id).select("displayName username email avatarUrl walletAddress primaryWallet primaryWalletAddress plan currentPlan credits createdAt").lean(),
     NFTCollection.countDocuments({ owner: id, status: { $in: ["published", "minting_live", "sold_out"] } }),
     CreatorEarning.aggregate([{ $match: { creatorId: id } }, { $group: { _id: "$status", usd: { $sum: "$netAmountUsd" } } }]),
+    CreatorEarning.find({ creatorId: id }).sort({ createdAt: -1 }).limit(8).lean(),
     MintRecord.aggregate([
       { $lookup: { from: "nftcollections", localField: "collectionId", foreignField: "_id", as: "collection" } },
       { $unwind: "$collection" },
       { $match: { "collection.owner": id, status: "confirmed" } },
       { $group: { _id: null, quantity: { $sum: "$quantity" } } }
     ]),
-    NFTCollection.find({ owner: id }).sort({ totalMinted: -1, launchAt: -1 }).limit(5).select("name slug totalMinted maxSupply chainId status").lean()
+    NFTCollection.find({ owner: id }).sort({ totalMinted: -1, launchAt: -1 }).limit(6).select("name slug description totalMinted maxSupply chainId status coverImageUrl bannerImageUrl profileImageUrl mintPrice contractAddress updatedAt").lean(),
+    CreatorPayout.aggregate([{ $match: { creatorId: id } }, { $group: { _id: "$status", usd: { $sum: "$amountUsd" } } }])
   ]);
   const available = earnings.find((x) => x._id === "available")?.usd ?? 0;
   const pending = earnings.find((x) => x._id === "pending")?.usd ?? 0;
   const paid = earnings.find((x) => x._id === "paid")?.usd ?? 0;
+  const requestedPayout = payoutStats.find((x) => x._id === "requested")?.usd ?? 0;
   return {
+    creator: creator ? {
+      id: String(creator._id),
+      displayName: creator.displayName ?? creator.username ?? "NEXMINT Creator",
+      username: creator.username,
+      email: creator.email,
+      avatarUrl: creator.avatarUrl,
+      walletAddress: creator.walletAddress ?? creator.primaryWallet ?? creator.primaryWalletAddress,
+      plan: creator.currentPlan ?? creator.plan ?? "free",
+      credits: creator.credits ?? 0,
+      createdAt: creator.createdAt
+    } : null,
     totalCollectionsLaunched: collections,
     totalMintRevenueUsd: available + pending + paid,
     totalPlatformFeesUsd: 0,
     totalCreatorEarningsUsd: available + pending + paid,
     availableEarningsUsd: available,
     pendingEarningsUsd: pending,
+    requestedPayoutUsd: requestedPayout,
     totalMints: mints[0]?.quantity ?? 0,
-    topCollections
+    topCollections,
+    recentEarnings
   };
 }
 
@@ -156,9 +174,17 @@ export async function userOwnedNfts(userId: string) {
     .sort({ updatedAt: -1, createdAt: -1 })
     .limit(24)
     .lean();
+  const assetKeys = nfts
+    .filter((nft) => nft.chainId && nft.contractAddress && nft.tokenId)
+    .map((nft) => ({ chainId: nft.chainId, nftContract: nft.contractAddress, tokenId: nft.tokenId }));
+  const listings = assetKeys.length ? await MarketplaceListing.find({ $or: assetKeys, status: "active" }).lean() : [];
+  const listingByAsset = new Map(listings.map((listing) => [`${listing.chainId}:${listing.nftContract}:${listing.tokenId}`, listing]));
   return nfts.map((nft) => ({
     ...nft,
     imageGatewayUrl: nft.imageIpfsUri ? getGatewayUrl(nft.imageIpfsUri) : undefined,
-    metadataGatewayUrl: nft.metadataIpfsUri ? getGatewayUrl(nft.metadataIpfsUri) : nft.metadataGatewayUrl
+    metadataGatewayUrl: nft.metadataIpfsUri ? getGatewayUrl(nft.metadataIpfsUri) : nft.metadataGatewayUrl,
+    marketplaceListing: nft.chainId && nft.contractAddress && nft.tokenId
+      ? listingByAsset.get(`${nft.chainId}:${nft.contractAddress}:${nft.tokenId}`)
+      : undefined
   }));
 }

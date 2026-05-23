@@ -5,9 +5,11 @@ import { AppError } from "../middleware/error.js";
 import { Generation } from "../models/Generation.js";
 import { NFTItem } from "../models/NFTItem.js";
 import { User } from "../models/User.js";
-import { getChainConfig, getExplorerTxUrl } from "../config/chains.config.js";
+import { CreditLedger } from "../models/CreditLedger.js";
+import { getChainConfig, getExplorerTxUrl, getSingleNftMinterContract } from "../config/chains.config.js";
 import { getGatewayUrl, uploadImageFromUrl, uploadJson } from "../services/ipfs/ipfs.service.js";
 import { createERC721Metadata } from "../services/nft/metadata.service.js";
+import { getIpfsImageUploadCreditCost } from "../services/billing/credit-cost.service.js";
 import { getReceipt, waitForConfirmations } from "../services/blockchain/tx-verifier.service.js";
 import { getPublicClient } from "../services/blockchain/rpc-client.service.js";
 import { assertErc721MintOwnership } from "../services/blockchain/erc721-verifier.service.js";
@@ -28,12 +30,14 @@ const prepareSchema = z.object({
 });
 
 const verifySchema = z.object({
-  nftItemId: z.string(),
+  nftItemId: z.string().optional(),
+  generationId: z.string().optional(),
   chainId: z.number().int(),
-  contractAddress: z.string(),
+  mintMethod: z.enum(["default_nexmint_contract"]).default("default_nexmint_contract"),
+  recipient: z.string(),
   txHash: z.custom<Hash>(),
   mintValue: z.string().regex(/^\d+$/).optional()
-});
+}).refine((body) => body.nftItemId || body.generationId, { message: "nftItemId or generationId is required" });
 
 function sameAddress(a: string, b: string) {
   return getAddress(a).toLowerCase() === getAddress(b).toLowerCase();
@@ -44,13 +48,33 @@ export const prepareFromGeneration = asyncHandler(async (req: AuthRequest, res) 
   const generation = await Generation.findOne({ _id: body.generationId, user: req.user!.id });
   if (!generation) throw new AppError(404, "Generation not found");
   if (!generation.imageUrl) throw new AppError(400, "Generation does not have an image to prepare");
+  const generationImageUrl = generation.imageUrl;
 
   generation.status = "uploading_image_ipfs";
   generation.progress = 76;
   await generation.save();
 
-  const imageUpload = await uploadImageFromUrl(generation.imageUrl);
+  const user = await User.findById(req.user!.id);
+  const imageUpload = generation.imageIpfsUri
+    ? { ipfsUri: generation.imageIpfsUri, ipfsHash: generation.imageIpfsUri.replace("ipfs://", ""), gatewayUrl: getGatewayUrl(generation.imageIpfsUri) }
+    : await (async () => {
+      const ipfsCreditCost = getIpfsImageUploadCreditCost();
+      if (!user || (user.credits ?? 0) < ipfsCreditCost) throw new AppError(402, `Insufficient credits. Required: ${ipfsCreditCost}, available: ${user?.credits ?? 0}.`);
+      const upload = await uploadImageFromUrl(generationImageUrl, { key: `generations/${String(generation._id)}/image` });
+      user.credits = Math.max((user.credits ?? 0) - ipfsCreditCost, 0);
+      await user.save();
+      await CreditLedger.create({
+        userId: req.user!.id,
+        type: "generation_spend",
+        amount: -ipfsCreditCost,
+        balanceAfter: user.credits,
+        sourceId: generation._id,
+        metadata: { step: "ipfs_image_upload" }
+      });
+      return upload;
+    })();
   generation.imageIpfsUri = imageUpload.ipfsUri;
+  generation.imageUrl = imageUpload.gatewayUrl;
   generation.status = "generating_metadata";
   generation.progress = 84;
   await generation.save();
@@ -68,7 +92,6 @@ export const prepareFromGeneration = asyncHandler(async (req: AuthRequest, res) 
   await generation.save();
 
   const metadataUpload = await uploadJson(metadata);
-  const user = await User.findById(req.user!.id).lean();
   const nftItem = await NFTItem.create({
     userId: req.user!.id,
     owner: req.user!.id,
@@ -77,7 +100,7 @@ export const prepareFromGeneration = asyncHandler(async (req: AuthRequest, res) 
     generationId: generation._id,
     name: body.name,
     description: body.description,
-    imageUrl: generation.imageUrl,
+    imageUrl: imageUpload.gatewayUrl,
     imageIpfsUri: imageUpload.ipfsUri,
     metadataIpfsUri: metadataUpload.ipfsUri,
     metadataGatewayUrl: metadataUpload.gatewayUrl,
@@ -105,34 +128,39 @@ export const prepareFromGeneration = asyncHandler(async (req: AuthRequest, res) 
 
 export const verifyMint = asyncHandler(async (req: AuthRequest, res) => {
   const body = verifySchema.parse(req.body);
-  if (!isAddress(body.contractAddress)) throw new AppError(400, "Invalid contract address");
   const chain = getChainConfig(body.chainId);
   if (!chain) throw new AppError(400, "Unsupported chain");
-  const nftItem = await NFTItem.findOne({ _id: body.nftItemId, userId: req.user!.id });
+  if (!isAddress(body.recipient)) throw new AppError(400, "Invalid recipient address");
+  const defaultContract = getSingleNftMinterContract(body.chainId);
+  if (!defaultContract || !isAddress(defaultContract)) throw new AppError(400, "No default single NFT contract is configured for this network.");
+  const nftItem = body.nftItemId
+    ? await NFTItem.findOne({ _id: body.nftItemId, userId: req.user!.id })
+    : await NFTItem.findOne({ generationId: body.generationId, userId: req.user!.id });
   if (!nftItem) throw new AppError(404, "NFT item not found");
   if (!nftItem.metadataIpfsUri) throw new AppError(400, "NFT metadata is not ready");
 
   const user = await User.findById(req.user!.id).lean();
-  const expectedReceiver = user?.primaryWalletAddress ?? nftItem.ownerWallet;
-  if (!expectedReceiver || !isAddress(expectedReceiver)) throw new AppError(400, "Wallet login is required before mint verification");
+  const expectedSender = user?.primaryWalletAddress ?? nftItem.ownerWallet;
+  if (!expectedSender || !isAddress(expectedSender)) throw new AppError(400, "Wallet login is required before mint verification");
+  const expectedReceiver = getAddress(body.recipient);
 
   nftItem.mintStatus = "minting";
   nftItem.chainId = body.chainId;
-  nftItem.contractAddress = body.contractAddress.toLowerCase();
+  nftItem.contractAddress = defaultContract.toLowerCase();
   await nftItem.save();
   await Generation.findByIdAndUpdate(nftItem.generationId, { status: "minting", progress: 98 });
 
   const receipt = await getReceipt(body.chainId, body.txHash);
   const tx = await getPublicClient(body.chainId).getTransaction({ hash: body.txHash });
-  if (!receipt.to || !sameAddress(receipt.to, body.contractAddress)) throw new AppError(400, "Mint transaction was sent to a different contract");
-  if (!sameAddress(tx.from, expectedReceiver)) throw new AppError(400, "Mint transaction sender mismatch");
+  if (!receipt.to || !sameAddress(receipt.to, defaultContract)) throw new AppError(400, "Mint transaction was sent to a different contract");
+  if (!sameAddress(tx.from, expectedSender)) throw new AppError(400, "Mint transaction sender mismatch");
   if (body.mintValue && tx.value < BigInt(body.mintValue)) throw new AppError(400, "Mint payment amount is lower than expected");
   if (receipt.status !== "success") throw new AppError(400, "Mint transaction failed on-chain");
   const { confirmations } = await waitForConfirmations({ chainId: body.chainId, txHash: body.txHash });
   void confirmations;
 
   const transfer = receipt.logs.find((log) => {
-    if (!sameAddress(log.address, body.contractAddress)) return false;
+    if (!sameAddress(log.address, defaultContract)) return false;
     try {
       const decoded = decodeEventLog({ abi: transferAbi, data: log.data, topics: log.topics });
       return decoded.eventName === "Transfer" && sameAddress(decoded.args.to, expectedReceiver);
@@ -145,27 +173,45 @@ export const verifyMint = asyncHandler(async (req: AuthRequest, res) => {
   const tokenId = decoded.args.tokenId.toString();
   const onchain = await assertErc721MintOwnership({
     chainId: body.chainId,
-    contractAddress: body.contractAddress,
+    contractAddress: defaultContract,
     owner: expectedReceiver,
     tokenId,
     expectedTokenUri: nftItem.metadataIpfsUri
   });
 
   nftItem.chainId = body.chainId;
-  nftItem.contractAddress = body.contractAddress.toLowerCase();
+  nftItem.contractAddress = defaultContract.toLowerCase();
   nftItem.tokenId = tokenId;
   nftItem.mintTxHash = body.txHash.toLowerCase();
   nftItem.mintStatus = "minted";
   nftItem.ownerWallet = expectedReceiver.toLowerCase();
   await nftItem.save();
-  await Generation.findByIdAndUpdate(nftItem.generationId, { status: "minted", progress: 100 });
+  await Generation.findByIdAndUpdate(nftItem.generationId, {
+    $set: {
+      status: "minted",
+      progress: 100,
+      chainId: body.chainId,
+      contractAddress: defaultContract.toLowerCase(),
+      tokenId,
+      mintTxHash: body.txHash.toLowerCase(),
+      ownerWallet: expectedReceiver.toLowerCase(),
+      "output.mint": {
+        chainId: body.chainId,
+        contractAddress: defaultContract.toLowerCase(),
+        tokenId,
+        txHash: body.txHash.toLowerCase(),
+        ownerWallet: expectedReceiver.toLowerCase(),
+        metadataIpfsUri: nftItem.metadataIpfsUri
+      }
+    }
+  });
 
   res.json({
     status: "minted",
     tokenId,
     txHash: body.txHash,
     chainId: body.chainId,
-    contractAddress: body.contractAddress,
+    contractAddress: defaultContract,
     tokenUri: onchain.tokenUri,
     explorerUrl: getExplorerTxUrl(body.chainId, body.txHash)
   });

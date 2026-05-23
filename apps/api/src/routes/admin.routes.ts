@@ -119,7 +119,7 @@ adminRouter.patch("/plans/:id", asyncHandler(async (req, res) => {
 }));
 
 adminRouter.post("/plans", asyncHandler(async (req, res) => {
-  const body = z.object({ id: z.string().min(2), tier: z.enum(["free", "starter", "pro", "enterprise"]), name: z.string(), billingPeriod: z.enum(["free", "monthly", "yearly", "custom"]), durationDays: z.number().int().positive().nullable().optional(), priceUsd: z.number().nullable().optional(), credits: z.number().nullable().optional() }).passthrough().parse(req.body);
+  const body = z.object({ id: z.string().min(2), tier: z.enum(["free", "starter", "creator", "pro", "enterprise"]), name: z.string(), billingPeriod: z.enum(["free", "monthly", "yearly", "custom"]), durationDays: z.number().int().positive().nullable().optional(), priceUsd: z.number().nullable().optional(), credits: z.number().nullable().optional() }).passthrough().parse(req.body);
   const settings = await getPlatformSettings();
   const plans = [...((settings.subscriptionPlans as any[]) ?? [])];
   if (plans.some((plan) => plan.id === body.id)) throw new Error("Plan id already exists");
@@ -127,6 +127,46 @@ adminRouter.post("/plans", asyncHandler(async (req, res) => {
   settings.subscriptionPlans = plans;
   await settings.save();
   res.status(201).json({ plan: body, plans });
+}));
+
+adminRouter.patch("/users/:userId/verification", asyncHandler(async (req: AuthRequest, res) => {
+  const body = z.object({
+    isVerifiedCreator: z.boolean(),
+    creatorBadge: z.enum(["none", "verified", "partner", "team"]).optional(),
+    reason: z.string().trim().max(500).optional()
+  }).parse(req.body);
+  const user = await User.findByIdAndUpdate(
+    req.params.userId,
+    {
+      isVerifiedCreator: body.isVerifiedCreator,
+      creatorBadge: body.creatorBadge ?? (body.isVerifiedCreator ? "verified" : "none"),
+      verifiedCreatorAt: body.isVerifiedCreator ? new Date() : undefined,
+      verifiedCreatorReason: body.reason
+    },
+    { new: true }
+  ).select("-passwordHash");
+  if (!user) throw new Error("User not found");
+  res.json({ user });
+}));
+
+adminRouter.patch("/collections/:collectionId/verification", asyncHandler(async (req: AuthRequest, res) => {
+  const body = z.object({
+    isVerifiedCollection: z.boolean(),
+    collectionBadge: z.enum(["none", "verified", "featured", "partner"]).optional(),
+    reason: z.string().trim().max(500).optional()
+  }).parse(req.body);
+  const collection = await NFTCollection.findByIdAndUpdate(
+    req.params.collectionId,
+    {
+      isVerifiedCollection: body.isVerifiedCollection,
+      collectionBadge: body.collectionBadge ?? (body.isVerifiedCollection ? "verified" : "none"),
+      verifiedCollectionAt: body.isVerifiedCollection ? new Date() : undefined,
+      verifiedCollectionReason: body.reason
+    },
+    { new: true }
+  );
+  if (!collection) throw new Error("Collection not found");
+  res.json({ collection });
 }));
 
 adminRouter.post("/payouts/:id/approve", asyncHandler(async (req: AuthRequest, res) => {

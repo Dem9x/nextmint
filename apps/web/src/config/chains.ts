@@ -55,25 +55,33 @@ export const CHAIN_METADATA = {
     slug: "base-sepolia",
     label: "Base Sepolia",
     badgeClass: "border-blue-400/40 bg-blue-500/15 text-blue-100",
-    explorerUrl: process.env.NEXT_PUBLIC_BASE_SEPOLIA_EXPLORER ?? "https://sepolia.basescan.org"
+    explorerUrl: process.env.NEXT_PUBLIC_BASE_SEPOLIA_EXPLORER ?? "https://sepolia.basescan.org",
+    singleNftMinterContract: process.env.NEXT_PUBLIC_SINGLE_NFT_MINTER_BASE_SEPOLIA ?? process.env.NEXT_PUBLIC_BASE_SEPOLIA_SINGLE_NFT_CONTRACT,
+    marketplaceContract: process.env.NEXT_PUBLIC_NEXMINT_MARKETPLACE_BASE_SEPOLIA
   },
   [sepolia.id]: {
     slug: "sepolia",
     label: "Ethereum Sepolia",
     badgeClass: "border-purple-400/40 bg-purple-500/15 text-purple-100",
-    explorerUrl: process.env.NEXT_PUBLIC_SEPOLIA_EXPLORER ?? "https://sepolia.etherscan.io"
+    explorerUrl: process.env.NEXT_PUBLIC_SEPOLIA_EXPLORER ?? "https://sepolia.etherscan.io",
+    singleNftMinterContract: process.env.NEXT_PUBLIC_SINGLE_NFT_MINTER_SEPOLIA,
+    marketplaceContract: process.env.NEXT_PUBLIC_NEXMINT_MARKETPLACE_SEPOLIA
   },
   [arbitrumSepolia.id]: {
     slug: "arbitrum-sepolia",
     label: "Arbitrum Sepolia",
     badgeClass: "border-cyan-400/40 bg-cyan-500/15 text-cyan-100",
-    explorerUrl: process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_EXPLORER ?? "https://sepolia.arbiscan.io"
+    explorerUrl: process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_EXPLORER ?? "https://sepolia.arbiscan.io",
+    singleNftMinterContract: undefined,
+    marketplaceContract: undefined
   },
   [bscTestnet.id]: {
     slug: "bsc-testnet",
     label: "BSC Testnet",
     badgeClass: "border-yellow-300/50 bg-yellow-400/15 text-yellow-100",
-    explorerUrl: process.env.NEXT_PUBLIC_BSC_TESTNET_EXPLORER ?? "https://testnet.bscscan.com"
+    explorerUrl: process.env.NEXT_PUBLIC_BSC_TESTNET_EXPLORER ?? "https://testnet.bscscan.com",
+    singleNftMinterContract: undefined,
+    marketplaceContract: undefined
   }
 } as const;
 

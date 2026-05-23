@@ -8,7 +8,7 @@ contract NexmintCollectionFactory is Ownable {
     address public platformTreasury;
     uint96 public platformFeeBps;
 
-    event CollectionCreated(address indexed collection, address indexed creator, string name, string symbol, uint256 maxSupply);
+    event CollectionCreated(address indexed collection, address indexed creator, string name, string symbol, uint256 maxSupply, string baseURI);
     event PlatformConfigUpdated(address indexed treasury, uint96 platformFeeBps);
 
     constructor(address initialOwner, address initialTreasury, uint96 initialPlatformFeeBps) Ownable(initialOwner) {
@@ -51,7 +51,7 @@ contract NexmintCollectionFactory is Ownable {
             royaltyBps_
         );
         collection = address(created);
-        emit CollectionCreated(collection, creator_, name_, symbol_, maxSupply_);
+        emit CollectionCreated(collection, creator_, name_, symbol_, maxSupply_, baseURI_);
     }
 
     function setPlatformConfig(address nextTreasury, uint96 nextPlatformFeeBps) external onlyOwner {

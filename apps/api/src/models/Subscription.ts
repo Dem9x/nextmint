@@ -4,10 +4,10 @@ const subscriptionSchema = new Schema(
   {
     user: { type: Types.ObjectId, ref: "User", required: true, unique: true },
     userId: { type: Types.ObjectId, ref: "User", index: true },
-    plan: { type: String, enum: ["free", "starter", "pro", "enterprise"], default: "free", index: true },
+    plan: { type: String, enum: ["free", "starter", "creator", "pro", "enterprise"], default: "free", index: true },
     planId: { type: String, index: true },
     planName: String,
-    planTier: { type: String, enum: ["free", "starter", "pro", "enterprise"], default: "free", index: true },
+    planTier: { type: String, enum: ["free", "starter", "creator", "pro", "enterprise"], default: "free", index: true },
     status: { type: String, enum: ["active", "past_due", "cancelled", "expired", "pending_payment", "grace_period", "replaced"], default: "active", index: true },
     interval: { type: String, enum: ["free", "monthly", "yearly", "custom"], default: "monthly" },
     billingPeriod: { type: String, enum: ["free", "monthly", "yearly", "custom"], default: "monthly" },
@@ -33,7 +33,13 @@ const subscriptionSchema = new Schema(
     },
     limits: {
       generations: { type: Number, default: 10 },
-      maxCollectionSize: { type: Number, default: 100 }
+      monthlyCredits: Number,
+      maxCollectionSize: { type: Number, default: 100 },
+      maxImageSize: Number,
+      testnetOnly: Boolean,
+      launchEnabled: Boolean,
+      marketplaceListingEnabled: Boolean,
+      includedLaunchpadPublishes: Number
     }
   },
   { timestamps: true }

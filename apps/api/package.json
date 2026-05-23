@@ -12,6 +12,7 @@
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1051.0",
     "@bull-board/api": "^6.3.0",
     "@bull-board/express": "^6.3.0",
     "bcryptjs": "^2.4.3",

@@ -1,23 +1,27 @@
 import { getChainById } from "@/config/chains";
 
-type ContractName = "treasuryPayment" | "nftFactory";
+type ContractName = "treasuryPayment" | "nftFactory" | "singleNftMinter";
 
 export const CONTRACT_ADDRESSES: Record<number, Partial<Record<ContractName, string | undefined>>> = {
   84532: {
     treasuryPayment: process.env.NEXT_PUBLIC_BASE_SEPOLIA_PAYMENT_CONTRACT,
-    nftFactory: process.env.NEXT_PUBLIC_BASE_SEPOLIA_NFT_FACTORY
+    nftFactory: process.env.NEXT_PUBLIC_BASE_SEPOLIA_NFT_FACTORY,
+    singleNftMinter: process.env.NEXT_PUBLIC_SINGLE_NFT_MINTER_BASE_SEPOLIA ?? process.env.NEXT_PUBLIC_BASE_SEPOLIA_SINGLE_NFT_CONTRACT
   },
   11155111: {
     treasuryPayment: process.env.NEXT_PUBLIC_SEPOLIA_PAYMENT_CONTRACT,
-    nftFactory: process.env.NEXT_PUBLIC_SEPOLIA_NFT_FACTORY
+    nftFactory: process.env.NEXT_PUBLIC_SEPOLIA_NFT_FACTORY,
+    singleNftMinter: process.env.NEXT_PUBLIC_SINGLE_NFT_MINTER_SEPOLIA
   },
   421614: {
     treasuryPayment: process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_PAYMENT_CONTRACT,
-    nftFactory: process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_NFT_FACTORY
+    nftFactory: process.env.NEXT_PUBLIC_ARBITRUM_SEPOLIA_NFT_FACTORY,
+    singleNftMinter: undefined
   },
   97: {
     treasuryPayment: process.env.NEXT_PUBLIC_BSC_TESTNET_PAYMENT_CONTRACT,
-    nftFactory: process.env.NEXT_PUBLIC_BSC_TESTNET_NFT_FACTORY
+    nftFactory: process.env.NEXT_PUBLIC_BSC_TESTNET_NFT_FACTORY,
+    singleNftMinter: undefined
   }
 };
 

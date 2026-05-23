@@ -22,16 +22,16 @@ export function NetworkModeSwitcher() {
     <motion.div
       initial={{ opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
-      className="inline-flex max-w-full flex-nowrap items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] p-1.5 shadow-2xl shadow-cyan-950/20 backdrop-blur"
+      className="flex max-w-full flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-1.5 shadow-2xl shadow-cyan-950/20 backdrop-blur sm:inline-flex sm:rounded-full"
     >
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-none">
         <ChainBadge chainId={selectedChainId} compact className="hidden md:inline-flex" />
-        <label className="relative">
+        <label className="relative min-w-0 flex-1 sm:flex-none">
           <span className="sr-only">Select app network</span>
           <select
             value={selectedChainId}
             onChange={(event) => setSelectedChainId(Number(event.target.value))}
-            className="h-9 w-44 appearance-none rounded-full border border-white/10 bg-black/40 px-3 pr-9 text-sm text-white outline-none transition hover:border-cyan/50 focus:border-cyan sm:w-52"
+            className="h-9 w-full appearance-none rounded-full border border-white/10 bg-black/40 px-3 pr-9 text-sm text-white outline-none transition hover:border-cyan/50 focus:border-cyan sm:w-52"
           >
             {SUPPORTED_TESTNET_CHAINS.map((chain) => (
               <option key={chain.id} value={chain.id} className="bg-slate-950">
